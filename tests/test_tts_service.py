@@ -21,7 +21,8 @@ class TestTTSServiceInit(unittest.TestCase):
         self.assertIsNone(s.engine)
         self.assertFalse(s._is_playing)
         self.assertEqual(s._playback_gen, 0)
-        self.assertIsNotNone(s._stop_event)
+        self.assertEqual(s._active_stops, [])
+        self.assertFalse(s._concurrent_mode)
 
     def test_callback_registration(self):
         s = TTSService()
@@ -194,9 +195,11 @@ class TestTTSServiceStop(unittest.TestCase):
 
     def test_stop_sets_event(self):
         s = TTSService()
-        s._stop_event.clear()
+        evt = threading.Event()
+        s._active_stops.append(evt)
         s.stop()
-        self.assertTrue(s._stop_event.is_set())
+        self.assertTrue(evt.is_set())
+        self.assertEqual(s._active_stops, [])
 
     def test_stop_resets_playing(self):
         s = TTSService()

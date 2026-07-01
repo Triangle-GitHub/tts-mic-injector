@@ -13,6 +13,7 @@ from audio.player import AudioPlayer
 from engines import create_engine
 from engines.edge import EdgeEngine
 from engines.sapi5 import SystemTTSEngine
+from config import CONCURRENT_MODE_DEFAULT
 
 try:
     import pyaudio
@@ -28,11 +29,12 @@ class TTSService:
     def __init__(self):
         self.engine = None
         self.engine_name = ""
-        self._stop_event = threading.Event()
+        self._active_stops = []          # per-worker stop events
         self._is_playing = False
         self._playback_gen = 0
         self._vb_device_index = None
         self._current_wav = None
+        self._concurrent_mode = CONCURRENT_MODE_DEFAULT
 
         self._callbacks = {}
 
@@ -48,6 +50,16 @@ class TTSService:
                 cb(*args)
             except Exception as e:
                 logger.debug(f"回调异常 ({event}): {e}")
+
+    # ── 并发模式 ──
+
+    @property
+    def concurrent_mode(self) -> bool:
+        return self._concurrent_mode
+
+    @concurrent_mode.setter
+    def concurrent_mode(self, enabled: bool):
+        self._concurrent_mode = enabled
 
     # ── 引擎管理 ──
     def start_engine(self, name: str, **kwargs):
@@ -92,31 +104,34 @@ class TTSService:
         return None
 
     # ── 播放 ──
+
     def speak(self, text: str, speed: float, volume: float, save_path: str = None):
         """合成并播放（非阻塞）。"""
         if not self.engine:
             logger.error("引擎未就绪，无法合成")
             return
 
-        if self._is_playing:
-            logger.info("正在播放中，先停止当前播放")
+        if not self._concurrent_mode:
             self.stop()
+            self._active_stops.clear()
 
-        self._stop_event.clear()
         self._is_playing = True
         self._playback_gen += 1
         gen = self._playback_gen
         self._emit("status", "🔊 合成中...", "orange")
 
+        worker_stop = threading.Event()
+        self._active_stops.append(worker_stop)
+
         monitor_idx = self._get_monitor_device_index() if hasattr(self, '_monitor_enabled') else None
         player = AudioPlayer(vb_device_index=self._vb_device_index)
         threading.Thread(target=self._speak_worker,
-                         args=(text, speed, volume, player, monitor_idx, gen, save_path),
+                         args=(text, speed, volume, player, monitor_idx, gen, save_path, worker_stop),
                          daemon=True).start()
 
     def _speak_worker(self, text: str, speed: float, volume: float,
                       player: AudioPlayer, monitor_device_index: int,
-                      gen: int, save_path: str = None):
+                      gen: int, save_path: str, stop_evt: threading.Event):
         """后台线程：合成 + 播放。"""
         wav_path = None
         try:
@@ -124,7 +139,7 @@ class TTSService:
 
             wav_path = self.engine.synthesize(text, speed, volume)
 
-            if self._stop_event.is_set() or gen != self._playback_gen:
+            if stop_evt.is_set() or gen != self._playback_gen:
                 return
 
             if save_path and os.path.exists(wav_path):
@@ -142,7 +157,7 @@ class TTSService:
             monitor = self._get_monitor_enabled() if hasattr(self, '_get_monitor_enabled') else False
             vol_getter = self._get_volume_getter if hasattr(self, '_get_volume_getter') else None
 
-            completed = player.play(wav_path, self._stop_event,
+            completed = player.play(wav_path, stop_evt,
                                      monitor=monitor,
                                      monitor_device_index=monitor_device_index,
                                      volume_getter=vol_getter)
@@ -153,14 +168,12 @@ class TTSService:
                 else:
                     logger.info("播放被中断")
                 self._emit("status", "🟢 就绪", "green")
-                self._is_playing = False
 
         except Exception as e:
             logger.error(f"错误: {e}")
             if gen == self._playback_gen:
                 self._emit("status", f"❌ 错误: {str(e)}", "red")
-                self._emit("status", "🟢 就绪", "green")  # reset after error display
-                self._is_playing = False
+                self._emit("status", "🟢 就绪", "green")
         finally:
             if gen == self._playback_gen:
                 self._is_playing = False
@@ -171,10 +184,14 @@ class TTSService:
                 except OSError:
                     pass
             self._current_wav = None
+            if stop_evt in self._active_stops:
+                self._active_stops.remove(stop_evt)
 
     def stop(self):
-        """停止当前播放。"""
-        self._stop_event.set()
+        """停止所有播放。"""
+        for evt in list(self._active_stops):
+            evt.set()
+        self._active_stops.clear()
         self._is_playing = False
         self._emit("status", "🟢 就绪", "green")
 
@@ -198,7 +215,6 @@ class TTSService:
         return AudioPlayer.list_output_devices()
 
     # ── 延迟绑定的 UI 状态获取器 ──
-    # 这些属性在 ui/app.py 中通过 setter 注入，避免 service 直接依赖 tkinter
 
     def set_monitor_state_getter(self, getter):
         """注入监听启用状态的获取器。"""

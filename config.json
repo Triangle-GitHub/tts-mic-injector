@@ -35,13 +35,17 @@
         "pitch": 0,
         "monitor_enabled": true,
         "piper_length_scale_min": 0.2,
-        "piper_length_scale_max": 5.0
+        "piper_length_scale_max": 5.0,
+        "concurrent_mode": false
     },
 
     "ui": {
         "window_title": "TTS Mic Injector",
-        "window_geometry": "720x620",
+        "window_width": 960,
+        "window_height": 620,
         "window_minsize": [600, 520],
+        "panel_min_width": 320,
+        "panel_hidden_min_width": 400,
         "input_font": ["Microsoft YaHei", 11],
         "input_height": 3,
         "log_font": ["Consolas", 9],
@@ -51,5 +55,51 @@
         "speed_scale_length": 180,
         "volume_scale_length": 100,
         "pitch_scale_length": 250
+    },
+
+    "theme": {
+        "dark": {
+            "window_bg": "#1e1e1e",
+            "central_bg": "#252525",
+            "chat_bg": "#2a2a2a",
+            "bubble_bg": "#3a3a3a",
+            "bubble_text": "rgba(255,255,255,0.90)",
+            "bubble_time": "rgba(255,255,255,0.45)",
+            "bubble_playing_bg": "#314a6e",
+            "bubble_playing_border": "rgba(70,125,200,0.45)",
+            "stop_btn_bg": "#3a3a3a",
+            "stop_btn_border": "rgba(255,255,255,0.15)",
+            "engine_btn_selected_bg": "rgba(95,140,200,0.35)",
+            "engine_btn_selected_fg": "rgba(255,255,255,0.9)",
+            "engine_btn_normal_bg": "rgba(255,255,255,0.05)",
+            "engine_btn_normal_fg": "rgba(255,255,255,0.75)",
+            "engine_btn_border_selected": "rgba(95,140,200,0.5)",
+            "engine_btn_border_normal": "rgba(255,255,255,0.08)"
+        },
+        "light": {
+            "window_bg": "#f5f5f5",
+            "central_bg": "#ffffff",
+            "chat_bg": "#fafafa",
+            "bubble_bg": "#f0f0f0",
+            "bubble_text": "rgba(0,0,0,0.85)",
+            "bubble_time": "rgba(0,0,0,0.45)",
+            "bubble_playing_bg": "#dce8f5",
+            "bubble_playing_border": "rgba(70,125,200,0.35)",
+            "stop_btn_bg": "#ffffff",
+            "stop_btn_border": "rgba(0,0,0,0.12)",
+            "engine_btn_selected_bg": "rgba(95,140,200,0.20)",
+            "engine_btn_selected_fg": "#1a1a1a",
+            "engine_btn_normal_bg": "rgba(0,0,0,0.03)",
+            "engine_btn_normal_fg": "rgba(0,0,0,0.75)",
+            "engine_btn_border_selected": "rgba(95,140,200,0.5)",
+            "engine_btn_border_normal": "rgba(0,0,0,0.08)"
+        }
+    },
+
+    "engine_speed_ranges": {
+        "espeak": [80, 450],
+        "sapi5": [50, 400],
+        "piper": [50, 200],
+        "edge": [50, 200]
     }
 }

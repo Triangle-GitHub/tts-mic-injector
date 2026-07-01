@@ -1,24 +1,52 @@
 # -*- coding: utf-8 -*-
 """
-MainWindow — Frameless 主窗口（使用 MSFluentWindow）。
-模仿 XJTU Toolbox 的自定义标题栏风格。
+MainWindow — 宽窗口双栏布局，左侧聊天 + 右侧面板。
 """
 
 import os
+import re
+import sys
+import logging
+from datetime import datetime
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QPixmap, QIcon
 from PyQt5.QtSvg import QSvgRenderer
-from qfluentwidgets import MSFluentWindow, setTheme, setThemeColor, Theme, isDarkTheme
+from PyQt5.QtWidgets import QHBoxLayout, QWidget
+from qfluentwidgets import MSFluentWindow, setTheme, setThemeColor, Theme, isDarkTheme, TransparentToolButton, FluentIcon
 
-from app.tts_interface import TTSInterface
+from service.tts_service import TTSService
+from app.chat_widget import ChatWidget
+from app.settings_panel import SettingsPanel
 from app.utils import cfg
+from engines.edge import EdgeEngine
+from engines.sapi5 import SystemTTSEngine
+from config import (
+    WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT,
+    PANEL_MIN_WIDTH, PANEL_HIDDEN_MIN_WIDTH, get_theme,
+)
 
 _ICON_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "icons", "icon.svg")
 
+logger = logging.getLogger("TTSMicInjector")
+
+
+def _system_is_dark() -> bool:
+    if sys.platform == "win32":
+        try:
+            import winreg
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            )
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return value == 0
+        except Exception:
+            return False
+    return False
+
 
 def _render_svg(path: str, size: int, color: QColor) -> QPixmap:
-    """将 SVG 渲染为指定颜色的 QPixmap。"""
     pm = QPixmap(size, size)
     pm.fill(Qt.transparent)
     p = QPainter(pm)
@@ -30,7 +58,6 @@ def _render_svg(path: str, size: int, color: QColor) -> QPixmap:
 
 
 def _paint_mic_pixmap(size: int, dark: bool = True) -> QPixmap:
-    """QPainter 绘制的麦克风兜底 Pixmap。"""
     pm = QPixmap(size, size)
     pm.fill(Qt.transparent)
     p = QPainter(pm)
@@ -72,15 +99,17 @@ def _paint_mic_pixmap(size: int, dark: bool = True) -> QPixmap:
 
 
 class MainWindow(MSFluentWindow):
+    """TTS Mic Injector 主窗口 — 双栏布局。"""
+
     def __init__(self):
         super().__init__()
 
-        theme = Theme.DARK if isDarkTheme() else Theme.LIGHT
-        setTheme(theme)
+        self._system_dark = _system_is_dark()
+        setTheme(Theme.DARK if self._system_dark else Theme.LIGHT)
         setThemeColor(cfg.themeColor.value)
 
-        self.setWindowTitle(cfg.windowTitle.value)
-        self.resize(720, 620)
+        self.setWindowTitle(WINDOW_TITLE)
+        self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setMinimumSize(cfg.windowMinsizeW.value, cfg.windowMinsizeH.value)
 
         self.navigationInterface.hide()
@@ -88,24 +117,86 @@ class MainWindow(MSFluentWindow):
         self._update_title_icon()
         cfg.themeChanged.connect(self._update_title_icon)
 
-        self._tts_interface = TTSInterface(self)
-        self.stackedWidget.addWidget(self._tts_interface)
-        self.stackedWidget.setCurrentWidget(self._tts_interface)
+        self._panel_toggle = TransparentToolButton(FluentIcon.MENU, self)
+        self._panel_toggle.setToolTip("显示/隐藏右侧面板")
+        self._panel_toggle.clicked.connect(self._toggle_panel)
+        layout = self.titleBar.hBoxLayout
+        layout.insertWidget(layout.count() - 3, self._panel_toggle)
+
+        self._service = TTSService()
+        self._chat = ChatWidget(self._service)
+        self._settings = SettingsPanel(self._service)
+        self._panel_width = PANEL_MIN_WIDTH
+
+        self._chat.set_speak_callback(self._on_speak)
+        self._settings.set_theme_change_callback(self._on_theme_changed)
+
+        self._central = QWidget()
+        self._central.setObjectName("centralWidget")
+        self._central.setAttribute(Qt.WA_StyledBackground, True)
+        hbox = QHBoxLayout(self._central)
+        hbox.setContentsMargins(8, 8, 8, 8)
+        hbox.setSpacing(8)
+        hbox.addWidget(self._chat, stretch=3)
+        hbox.addWidget(self._settings, stretch=1)
+
+        self.stackedWidget.addWidget(self._central)
+        self.stackedWidget.setCurrentWidget(self._central)
+
+        self._apply_theme(self._system_dark)
+
+    def _on_theme_changed(self, dark: bool):
+        self._apply_theme(dark)
+        self._chat._on_theme_changed(dark)
+
+    def _toggle_panel(self):
+        if self._settings.isVisible():
+            self._panel_width = self._settings.width()
+            self._settings.hide()
+            self.resize(self.width() - self._panel_width, self.height())
+            self.setMinimumWidth(max(PANEL_HIDDEN_MIN_WIDTH, self.minimumWidth() - self._panel_width))
+        else:
+            self._settings.show()
+            self.resize(self.width() + self._panel_width, self.height())
+            self.setMinimumWidth(self.minimumWidth() + self._panel_width)
+
+    def _apply_theme(self, dark: bool):
+        t = get_theme(dark)
+        self.setStyleSheet(f"MSFluentWindow {{ background-color: {t['window_bg']}; }}")
+        self._central.setStyleSheet(
+            f"QWidget#centralWidget {{ background-color: {t['central_bg']}; }}"
+        )
+
+    def _on_speak(self, text: str, save_to_disk: bool = False):
+        speed = self._settings.speed_value
+        volume = self._settings.volume_value / 100.0
+        if isinstance(self._service.engine, EdgeEngine):
+            self._service.engine.set_pitch(self._settings.pitch_value)
+        save_path = None
+        if save_to_disk:
+            save_path = self._make_save_path(text)
+        self._service.speak(text, speed, volume, save_path=save_path)
+
+    @staticmethod
+    def _make_save_path(text: str) -> str:
+        now = datetime.now()
+        ts = now.strftime("%Y%m%d_%H%M%S")
+        safe = re.sub(r'[\\/:*?"<>|\r\n\t]', '', text)
+        safe = re.sub(r'\s+', ' ', safe).strip()
+        safe = safe[:10] if safe else "audio"
+        return os.path.join(os.getcwd(), f"{ts}_{safe}.wav")
 
     def _update_title_icon(self):
         dark = isDarkTheme()
         ratio = max(1.0, self.devicePixelRatioF())
-
         abs_path = os.path.normpath(_ICON_PATH)
         color = QColor(255, 255, 255) if dark else QColor(60, 60, 60)
-
         if os.path.exists(abs_path):
             pm = _render_svg(abs_path, int(24 * ratio), color)
         else:
             pm = _paint_mic_pixmap(int(24 * ratio), dark)
         pm.setDevicePixelRatio(ratio)
         self.titleBar.iconLabel.setPixmap(pm)
-
         icon_size = int(32 * ratio)
         if os.path.exists(abs_path):
             icon = QIcon(_render_svg(abs_path, icon_size, color))
@@ -114,6 +205,9 @@ class MainWindow(MSFluentWindow):
         self.setWindowIcon(icon)
 
     def closeEvent(self, event):
-        if hasattr(self, '_tts_interface'):
-            self._tts_interface.cleanup()
+        self._chat.stop()
+        self._service.stop()
+        if isinstance(self._service.engine, SystemTTSEngine):
+            self._service.engine.stop()
+        self._settings.cleanup()
         event.accept()

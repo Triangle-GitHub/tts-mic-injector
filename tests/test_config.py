@@ -20,7 +20,7 @@ from config import (
     PIPER_SYNTH_TIMEOUT, ALIYUN_SYNTH_TIMEOUT,
     VOLUME_DEFAULT, PITCH_DEFAULT, MONITOR_ENABLED_DEFAULT,
     PIPER_LENGTH_SCALE_MIN, PIPER_LENGTH_SCALE_MAX,
-    WINDOW_TITLE, WINDOW_GEOMETRY, WINDOW_MINSIZE,
+    WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_MINSIZE,
     INPUT_FONT, INPUT_HEIGHT, LOG_FONT, LOG_HEIGHT,
     HISTORY_HEIGHT, SPEED_SCALE_LENGTH, VOLUME_SCALE_LENGTH, PITCH_SCALE_LENGTH,
     ALIYUN_API_KEY, ALIYUN_MODEL, ALIYUN_VOICE,
@@ -75,7 +75,8 @@ class TestNewConfigConstants(unittest.TestCase):
 
     def test_ui_constants(self):
         self.assertIsInstance(WINDOW_TITLE, str)
-        self.assertRegex(WINDOW_GEOMETRY, r'\d+x\d+')
+        self.assertGreater(WINDOW_WIDTH, 0)
+        self.assertGreater(WINDOW_HEIGHT, 0)
         self.assertEqual(len(WINDOW_MINSIZE), 2)
         self.assertEqual(len(INPUT_FONT), 2)
         self.assertGreater(INPUT_HEIGHT, 0)
