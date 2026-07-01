@@ -1,0 +1,55 @@
+{
+    "aliyun": {
+        "api_key": "sk-",
+        "model": "qwen3-tts-flash-realtime",
+        "voice": "Ethan"
+    },
+
+    "paths": {
+        "espeak": "espeak-ng.exe",
+        "piper": "piper.exe",
+        "piper_models": "piper_models",
+        "ffmpeg": "ffmpeg"
+    },
+
+    "vb_cable": {
+        "keywords": ["CABLE Input"]
+    },
+
+    "edge": {
+        "default_voice": "zh-CN-YunxiNeural",
+        "pitch_range": [-50, 50]
+    },
+
+    "timeouts": {
+        "espeak_synth": 10,
+        "sapi5_voices": 10,
+        "sapi5_synth": 60,
+        "piper_synth": 60,
+        "aliyun_synth": 120
+    },
+
+    "defaults": {
+        "speed": 175,
+        "volume": 100,
+        "pitch": 0,
+        "monitor_enabled": true,
+        "piper_length_scale_min": 0.2,
+        "piper_length_scale_max": 5.0
+    },
+
+    "ui": {
+        "window_title": "TTS Mic Injector",
+        "window_geometry": "720x620",
+        "window_minsize": [600, 520],
+        "input_font": ["Microsoft YaHei", 11],
+        "input_height": 3,
+        "log_font": ["Consolas", 9],
+        "log_height": 8,
+        "log_max_lines": 200,
+        "history_height": 5,
+        "speed_scale_length": 180,
+        "volume_scale_length": 100,
+        "pitch_scale_length": 250
+    }
+}

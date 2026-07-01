@@ -1,0 +1,40 @@
+# Bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Runtime generated config
+qt_config.json
+
+# TTS temporary / output audio files
+*.wav
+*.mp3
+*.pcm
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
