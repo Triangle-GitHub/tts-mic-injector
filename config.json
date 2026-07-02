@@ -1,6 +1,6 @@
 {
     "aliyun": {
-        "api_key": "sk-",
+        "api_key": "YOUR_ALIYUN_API_KEY",
         "model": "qwen3-tts-flash-realtime",
         "voice": "Ethan"
     },

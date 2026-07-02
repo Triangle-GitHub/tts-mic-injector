@@ -5,8 +5,6 @@ EspeakEngine — eSpeak NG 本地 TTS 引擎（最快、最轻量）。
 
 import os
 import sys
-import wave
-import struct
 import tempfile
 import subprocess
 import logging
@@ -86,9 +84,6 @@ class EspeakEngine(TTSEngine):
                         f"eSpeak NG 合成失败 (return code {proc.returncode}):\n{stderr.decode('utf-8', errors='replace')}"
                     )
 
-            if volume < 0.99:
-                self._adjust_volume(wav_path, volume)
-
             return wav_path
 
         except subprocess.TimeoutExpired:
@@ -107,25 +102,6 @@ class EspeakEngine(TTSEngine):
                     os.unlink(txt_path)
                 except OSError:
                     pass
-
-    def _adjust_volume(self, wav_path: str, factor: float):
-        try:
-            with wave.open(wav_path, "rb") as wf:
-                params = wf.getparams()
-                frames = bytearray(wf.readframes(wf.getnframes()))
-
-            samples = struct.iter_unpack("<h", frames)
-            adjusted = bytearray()
-            for (sample,) in samples:
-                val = int(sample * factor)
-                val = max(-32768, min(32767, val))
-                adjusted.extend(struct.pack("<h", val))
-
-            with wave.open(wav_path, "wb") as wf:
-                wf.setparams(params)
-                wf.writeframes(bytes(adjusted))
-        except Exception as e:
-            logger.warning(f"音量调整失败: {e}")
 
     def get_speed_range(self):
         return (SPEED_MIN, SPEED_MAX)

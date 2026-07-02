@@ -8,7 +8,8 @@ import logging
 
 import subprocess
 
-from PyQt5.QtCore import Qt, QTimer, QEvent, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, QEvent, pyqtSignal, QPointF
+from PyQt5.QtGui import QPen, QColor
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFrame,
     QMessageBox, QApplication, QSizePolicy,
@@ -58,6 +59,15 @@ except ImportError:
     dashscope = None
 
 logger = logging.getLogger("TTSMicInjector")
+
+
+class _VolumeSlider(Slider):
+    def _drawHorizonTick(self, painter):
+        r = self.handle.width() / 2
+        mid = r + 0.5 * (self.width() - r * 2)
+        c = QColor(255, 255, 255, 60) if isDarkTheme() else QColor(0, 0, 0, 60)
+        painter.setPen(QPen(c, 1))
+        painter.drawLine(QPointF(mid, r - 6), QPointF(mid, r + 6))
 
 
 class SettingsPanel(QWidget):
@@ -301,8 +311,8 @@ class SettingsPanel(QWidget):
         row = QHBoxLayout()
         row.setSpacing(6)
         row.addWidget(BodyLabel("音量"))
-        self._volume_slider = Slider(Qt.Horizontal)
-        self._volume_slider.setRange(0, 100)
+        self._volume_slider = _VolumeSlider(Qt.Horizontal)
+        self._volume_slider.setRange(0, 200)
         self._volume_slider.setValue(VOLUME_DEFAULT)
         self._volume_slider.setMinimumWidth(VOLUME_SCALE_LENGTH)
         self._volume_slider.valueChanged.connect(self._on_vol_change)

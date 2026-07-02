@@ -124,7 +124,7 @@ class Config(QConfig):
 
     # ── 默认值 ──
     speedDefault = ConfigItem("defaults", "speed", 175, IntValidator(175), IntSerializer())
-    volumeDefault = ConfigItem("defaults", "volume", 100, IntValidator(100), IntSerializer())
+    volumeDefault = ConfigItem("defaults", "volume", 100, IntValidator(200), IntSerializer())
     pitchDefault = ConfigItem("defaults", "pitch", 0, IntValidator(0), IntSerializer())
     monitorEnabledDefault = OptionsConfigItem(
         "defaults", "monitor_enabled", True,

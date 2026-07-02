@@ -93,7 +93,7 @@ _DEFAULTS = {
         "log_max_lines": 200,
         "history_height": 5,
         "speed_scale_length": 180,
-        "volume_scale_length": 100,
+        "volume_scale_length": 200,
         "pitch_scale_length": 250,
     },
     "theme": {

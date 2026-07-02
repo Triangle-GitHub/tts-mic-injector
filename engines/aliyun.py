@@ -8,7 +8,6 @@ import os
 import json
 import wave
 import base64
-import struct
 import tempfile
 import threading
 import logging
@@ -179,9 +178,6 @@ class AliyunEngine(TTSEngine):
             with open(pcm_path, "rb") as f:
                 pcm_data = f.read()
 
-            if volume < 0.99:
-                pcm_data = self._adjust_pcm_volume(pcm_data, volume)
-
             with wave.open(wav_path, "wb") as wf:
                 wf.setnchannels(1)
                 wf.setsampwidth(2)
@@ -203,16 +199,6 @@ class AliyunEngine(TTSEngine):
                     os.unlink(pcm_path)
                 except OSError:
                     pass
-
-    def _adjust_pcm_volume(self, pcm_data: bytes, factor: float) -> bytes:
-        count = len(pcm_data) // 2
-        result = bytearray(len(pcm_data))
-        for i in range(count):
-            sample = struct.unpack_from("<h", pcm_data, i * 2)[0]
-            val = int(sample * factor)
-            val = max(-32768, min(32767, val))
-            struct.pack_into("<h", result, i * 2, val)
-        return bytes(result)
 
     def get_speed_range(self):
         return None

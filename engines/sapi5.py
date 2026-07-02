@@ -92,7 +92,7 @@ class SystemTTSEngine(TTSEngine):
         voice_index = self._current_voice_index
         sapi_rate = round((speed - self._RATE_CENTER) / self._RATE_SCALE)
         sapi_rate = max(self._SAPI_RATE_MIN, min(self._SAPI_RATE_MAX, sapi_rate))
-        sapi_vol = int(volume * 100)
+        sapi_vol = 100
 
         done = threading.Event()
         error = []

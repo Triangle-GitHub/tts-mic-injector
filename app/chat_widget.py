@@ -9,12 +9,12 @@ from datetime import datetime
 from PyQt5.QtCore import Qt, QTimer, QEvent, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QShortcut,
+    QWidget, QVBoxLayout, QHBoxLayout, QShortcut,
     QSpacerItem, QSizePolicy,
 )
 
 from qfluentwidgets import (
-    PrimaryPushButton, LineEdit, isDarkTheme,
+    PrimaryPushButton, LineEdit, SmoothScrollArea, isDarkTheme,
 )
 
 from service.tts_service import TTSService
@@ -23,7 +23,7 @@ from config import get_theme
 
 
 class _ChatContainer(QWidget):
-    """容器 widget，允许 QScrollArea 将宽度缩至小于子控件首选宽度。"""
+    """容器 widget，允许滚动区域将宽度缩至小于子控件首选宽度。"""
     def minimumSizeHint(self):
         hint = super().minimumSizeHint()
         hint.setWidth(80)
@@ -70,6 +70,10 @@ class ChatWidget(QWidget):
         self._items[msg_id] = item
         self._msg_list_layout.insertWidget(self._msg_list_layout.count() - 1, item)
 
+        vp_w = self._scroll.viewport().width()
+        if vp_w > 0:
+            item.set_max_text_width(vp_w)
+
         QTimer.singleShot(50, self._scroll_to_bottom)
         return msg_id
 
@@ -93,9 +97,11 @@ class ChatWidget(QWidget):
         esc.activated.connect(self.stop)
 
     def _build_message_list(self, parent):
-        self._scroll = QScrollArea()
+        self._scroll = SmoothScrollArea()
+        self._scroll.setObjectName("chatScrollArea")
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll.viewport().installEventFilter(self)
         self._apply_scroll_style(self._scroll)
 
         container = _ChatContainer()
@@ -139,7 +145,7 @@ class ChatWidget(QWidget):
         t = get_theme(dark)
         bg = t["chat_bg"]
         scroll.setStyleSheet(
-            f"QScrollArea {{"
+            f"#chatScrollArea {{"
             f"  background-color: {bg};"
             f"  border: none;"
             f"  border-radius: 8px;"
@@ -159,11 +165,13 @@ class ChatWidget(QWidget):
     # ── 发送 ──
 
     def eventFilter(self, obj, event):
-        if obj is self._input and event.type() == QEvent.KeyPress:
+        if hasattr(self, '_input') and obj is self._input and event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
                 if event.modifiers() & Qt.ControlModifier:
                     self._do_send(save_to_disk=True)
                     return True
+        elif hasattr(self, '_scroll') and obj is self._scroll.viewport() and event.type() == QEvent.Resize:
+            self._sync_msg_max_widths()
         return super().eventFilter(obj, event)
 
     def _on_send_enter(self):
@@ -222,6 +230,13 @@ class ChatWidget(QWidget):
             self._apply_scroll_style(self._scroll, dark)
         for item in self._items.values():
             item.refresh_theme(dark)
+
+    def _sync_msg_max_widths(self):
+        vp_w = self._scroll.viewport().width()
+        if vp_w <= 0:
+            return
+        for item in self._items.values():
+            item.set_max_text_width(vp_w)
 
     # ── 辅助 ──
 

@@ -124,8 +124,7 @@ class EdgeEngine(TTSEngine):
     def synthesize(self, text: str, speed: float, volume: float) -> str:
         rate_pct = int(speed - 100)
         rate_str = f"{rate_pct:+d}%"
-        vol_pct = int((volume - 0.5) * 200)
-        vol_str = f"{vol_pct:+d}%"
+        vol_str = "+0%"
         pitch_str = f"{int(self._pitch_hz):+d}Hz"
 
         logger.debug(f"Edge合成: voice={self._current_voice}, rate={rate_str}, vol={vol_str}, pitch={pitch_str}")

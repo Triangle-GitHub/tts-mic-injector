@@ -146,7 +146,7 @@ class AudioPlayer:
             while data and not stop_event.is_set():
                 if volume_getter:
                     vol = volume_getter()
-                    if vol < 0.99:
+                    if abs(vol - 1.0) > 0.01:
                         data = self._adjust_chunk_volume(data, sampwidth, vol)
 
                 # VB-Cable 输出：需要时降混为单声道

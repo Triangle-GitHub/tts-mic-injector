@@ -4,12 +4,16 @@ MessageItem — 聊天气泡组件，宽度自适应消息长度，
 点击重放，播放中显示右侧停止按钮。
 """
 
+import logging
+
 from PyQt5.QtCore import Qt, pyqtSignal, QEvent
 from PyQt5.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QSizePolicy, QPushButton,
+    QWidget, QHBoxLayout, QVBoxLayout, QSizePolicy, QPushButton, QApplication,
 )
 from qfluentwidgets import BodyLabel, CaptionLabel, isDarkTheme
 from config import get_theme
+
+logger = logging.getLogger("TTSMicInjector")
 
 
 class MessageItem(QWidget):
@@ -73,15 +77,12 @@ class MessageItem(QWidget):
         # 右侧弹簧，把气泡和按钮推向左侧
         root.addStretch()
 
-        self._update_max_width()
-
-    def _update_max_width(self):
-        container = self.parent()
-        if container is None:
+    def set_max_text_width(self, viewport_width: int):
+        """根据聊天区视口宽度设置气泡文本最大宽度，始终预留停止按钮空间"""
+        if viewport_width <= 0:
             return
-        padding = 8 + 8
-        stop_btn_width = 26 + 6
-        available = container.width() - padding - stop_btn_width
+        # 容器margin(16) + 布局间距(6) + 停止按钮(26) + 气泡内边距(28) = 76
+        available = viewport_width - 76
         self._text_label.setMaximumWidth(max(120, available))
 
     # ── 样式 ──
@@ -154,11 +155,16 @@ class MessageItem(QWidget):
             if event.button() == Qt.LeftButton and not self._playing:
                 self.clicked.emit(self._msg_id)
                 return True
+            elif event.button() == Qt.RightButton:
+                self._copy_to_clipboard()
+                return True
         return super().eventFilter(obj, event)
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._update_max_width()
+    def _copy_to_clipboard(self):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self._text)
+        preview = self._text[:50] + ("..." if len(self._text) > 50 else "")
+        logger.info("[聊天] 已复制消息到剪贴板: %s", preview)
 
     def refresh_theme(self, dark: bool = None):
         self._apply_style(dark)
