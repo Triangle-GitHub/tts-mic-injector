@@ -14,6 +14,8 @@ import logging
 from engines.base import TTSEngine
 from config import ESPEAK_PATH, SPEED_MIN, SPEED_MAX, ESPEAK_SYNTH_TIMEOUT
 
+_CREATION_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+
 logger = logging.getLogger("TTSMicInjector")
 
 
@@ -66,6 +68,7 @@ class EspeakEngine(TTSEngine):
                  "-w", wav_path, "-f", txt_path],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                creationflags=_CREATION_FLAGS,
             )
             stdout, stderr = proc.communicate(timeout=ESPEAK_SYNTH_TIMEOUT)
 
@@ -75,6 +78,7 @@ class EspeakEngine(TTSEngine):
                      "-w", wav_path, "-f", txt_path],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
+                    creationflags=_CREATION_FLAGS,
                 )
                 stdout, stderr = proc.communicate(timeout=ESPEAK_SYNTH_TIMEOUT)
                 if proc.returncode != 0:

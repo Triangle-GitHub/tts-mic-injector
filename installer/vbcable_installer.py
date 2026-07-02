@@ -10,6 +10,7 @@ VB-Cable 一键安装器 — 下载、安装、检测流水线。
 """
 
 import os
+import sys
 import zipfile
 import shutil
 import tempfile
@@ -17,6 +18,8 @@ import logging
 import time
 import subprocess
 from pathlib import Path
+
+_CREATION_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
@@ -202,6 +205,7 @@ class VBCableInstaller(QThread):
                 capture_output=True,
                 text=True,
                 timeout=15,
+                creationflags=_CREATION_FLAGS,
             )
             # Start-Process 本身成功了就算启动成功
             # 实际安装结果由 _wait_device 轮询判断
@@ -235,6 +239,7 @@ class VBCableInstaller(QThread):
                 ],
                 capture_output=True,
                 timeout=10,
+                creationflags=_CREATION_FLAGS,
             )
         except Exception:
             pass

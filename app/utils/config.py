@@ -7,6 +7,8 @@ QConfig 配置中心 — 替代旧的 config.py 手动 JSON 加载。
 import json
 from pathlib import Path
 
+from config import _get_app_dir
+
 from qfluentwidgets import (
     QConfig, qconfig, OptionsConfigItem, OptionsValidator,
     ConfigSerializer, ConfigValidator, ConfigItem, Theme,
@@ -89,8 +91,8 @@ class PassSerializer(ConfigSerializer):
         return value
 
 
-CONFIG_JSON_PATH = Path(__file__).parent.parent.parent / "config.json"
-QCONFIG_PATH = Path(__file__).parent.parent.parent / "qt_config.json"
+CONFIG_JSON_PATH = _get_app_dir() / "config.json"
+QCONFIG_PATH = _get_app_dir() / "qt_config.json"
 
 
 class Config(QConfig):
@@ -126,6 +128,10 @@ class Config(QConfig):
     pitchDefault = ConfigItem("defaults", "pitch", 0, IntValidator(0), IntSerializer())
     monitorEnabledDefault = OptionsConfigItem(
         "defaults", "monitor_enabled", True,
+        OptionsValidator([True, False]), BooleanSerializer()
+    )
+    disableLogFile = OptionsConfigItem(
+        "defaults", "disable_log_file", False,
         OptionsValidator([True, False]), BooleanSerializer()
     )
 

@@ -7,11 +7,38 @@
 """
 
 import os
+import sys
 import json
 import logging
 from pathlib import Path
 
-ALIYUN_CONFIG_PATH = Path(__file__).parent / "config.json"
+
+def _get_app_dir() -> Path:
+    """获取 app 根目录。
+
+    打包后（sys.frozen）为 exe 所在目录，源码运行时为此文件所在目录。
+    用于需要可写访问的文件（config.json / qt_config.json / logs）。
+    """
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent
+
+
+def _get_data_dir() -> Path:
+    """获取只读资源目录。
+
+    打包后为 PyInstaller 的解压临时目录（sys._MEIPASS），
+    源码运行时为此文件所在目录。
+
+    用于 assets/ 等只读资源。
+    """
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        return Path(meipass)
+    return Path(__file__).parent
+
+
+ALIYUN_CONFIG_PATH = _get_app_dir() / "config.json"
 
 logger = logging.getLogger("TTSMicInjector")
 
@@ -50,6 +77,7 @@ _DEFAULTS = {
         "piper_length_scale_min": 0.2,
         "piper_length_scale_max": 5.0,
         "concurrent_mode": False,
+        "disable_log_file": False,
     },
     "ui": {
         "window_title": "TTS Mic Injector",
@@ -178,6 +206,7 @@ MONITOR_ENABLED_DEFAULT = _cfg["defaults"]["monitor_enabled"]
 PIPER_LENGTH_SCALE_MIN = _cfg["defaults"]["piper_length_scale_min"]
 PIPER_LENGTH_SCALE_MAX = _cfg["defaults"]["piper_length_scale_max"]
 CONCURRENT_MODE_DEFAULT = _cfg["defaults"]["concurrent_mode"]
+DISABLE_LOG_FILE = _cfg["defaults"]["disable_log_file"]
 
 # ── UI 外观 ──
 WINDOW_TITLE = _cfg["ui"]["window_title"]

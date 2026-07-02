@@ -4,6 +4,7 @@ PiperEngine — Piper 本地神经网络 TTS 引擎。
 """
 
 import os
+import sys
 import wave
 import struct
 import tempfile
@@ -12,6 +13,8 @@ import logging
 
 from engines.base import TTSEngine
 from config import PIPER_PATH, PIPER_MODEL_DIR, PIPER_SYNTH_TIMEOUT, PIPER_LENGTH_SCALE_MIN, PIPER_LENGTH_SCALE_MAX
+
+_CREATION_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
 
 logger = logging.getLogger("TTSMicInjector")
 
@@ -118,6 +121,7 @@ class PiperEngine(TTSEngine):
                 input=text.encode("utf-8"),
                 capture_output=True,
                 timeout=PIPER_SYNTH_TIMEOUT,
+                creationflags=_CREATION_FLAGS,
             )
 
             if result.returncode != 0:

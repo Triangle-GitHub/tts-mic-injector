@@ -4,6 +4,7 @@ EdgeEngine — Microsoft Edge TTS 云端引擎。
 """
 
 import os
+import sys
 import tempfile
 import subprocess
 import threading
@@ -11,6 +12,8 @@ import logging
 
 from engines.base import TTSEngine
 from config import EDGE_DEFAULT_VOICE, FFMPEG_PATH, EDGE_PITCH_MIN, EDGE_PITCH_MAX
+
+_CREATION_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
 
 try:
     import asyncio
@@ -169,7 +172,8 @@ class EdgeEngine(TTSEngine):
                 [FFMPEG_PATH, "-y", "-i", mp3_path,
                  "-acodec", "pcm_s16le", "-ar", "24000", "-ac", "1",
                  wav_path],
-                capture_output=True
+                capture_output=True,
+                creationflags=_CREATION_FLAGS,
             )
             if result.returncode != 0:
                 raise RuntimeError(

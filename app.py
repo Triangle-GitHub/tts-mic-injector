@@ -28,8 +28,6 @@ except ImportError:
 
 sys.stdout = _stdout
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
 QApplication.setHighDpiScaleFactorRoundingPolicy(
     Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
 )

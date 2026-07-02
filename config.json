@@ -36,7 +36,8 @@
         "monitor_enabled": true,
         "piper_length_scale_min": 0.2,
         "piper_length_scale_max": 5.0,
-        "concurrent_mode": false
+        "concurrent_mode": false,
+        "disable_log_file": false
     },
 
     "ui": {

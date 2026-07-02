@@ -3,6 +3,7 @@ from enum import Enum
 from qfluentwidgets import StyleSheetBase, Theme
 
 from .config import cfg
+from config import _get_data_dir
 
 
 class StyleSheet(StyleSheetBase, Enum):
@@ -11,4 +12,4 @@ class StyleSheet(StyleSheetBase, Enum):
 
     def path(self, theme=Theme.AUTO):
         theme = cfg.theme if theme == Theme.AUTO else theme
-        return f"assets/qss/{theme.value.lower()}/{self.value}.qss"
+        return str(_get_data_dir() / "assets" / "qss" / theme.value.lower() / f"{self.value}.qss")
