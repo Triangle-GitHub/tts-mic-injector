@@ -312,6 +312,7 @@ class TTSInterface(QWidget):
         engine_names = ["Aliyun", "Edge", "SAPI5", "eSpeak", "Piper"]
         for name in engine_names:
             btn = PushButton(name)
+            btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda checked, n=name: self._switch_engine(n))
             layout.addWidget(btn)
             self._engine_btns[name] = btn

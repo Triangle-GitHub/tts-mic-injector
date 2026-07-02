@@ -119,7 +119,7 @@ class ChatWidget(QWidget):
         bar_layout.setSpacing(8)
 
         self._input = LineEdit()
-        self._input.setPlaceholderText("输入消息... (Ctrl+Enter 保存)")
+        self._input.setPlaceholderText("输入消息...")
         self._input.setClearButtonEnabled(True)
         self._input.installEventFilter(self)
         self._input.returnPressed.connect(self._on_send_enter)

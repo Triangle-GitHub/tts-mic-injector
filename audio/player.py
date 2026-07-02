@@ -74,6 +74,9 @@ class AudioPlayer:
              volume_getter=None) -> bool:
         """播放 WAV 文件到 VB-Cable，可选同时输出到监听设备。
         
+        当 VB-Cable 不可用（_vb_device_index 为 None）时，
+        仍可通过监听设备播放，实现"仅监听"模式。
+        
         返回 True 表示播放完成，False 表示被中断。
         """
         if pyaudio is None:
@@ -84,39 +87,42 @@ class AudioPlayer:
             wf = wave.open(wav_path, "rb")
             p = self._pyaudio = pyaudio.PyAudio()
 
-            if self._vb_device_index is None:
-                self._vb_device_index = self.find_vb_cable()
-
             sampwidth = wf.getsampwidth()
             nchannels = wf.getnchannels()
             framerate = wf.getframerate()
             audio_format = p.get_format_from_width(sampwidth)
 
+            # ── VB-Cable 输出流（可选） ──
             need_downmix = False
-            try:
-                self._stream = p.open(
-                    format=audio_format,
-                    channels=nchannels,
-                    rate=framerate,
-                    output=True,
-                    output_device_index=self._vb_device_index,
-                    frames_per_buffer=1024,
-                )
-            except OSError:
-                if nchannels > 1:
-                    logger.info(f"VB-Cable 不支持 {nchannels} 声道，转为单声道播放")
+            if self._vb_device_index is not None:
+                try:
                     self._stream = p.open(
                         format=audio_format,
-                        channels=1,
+                        channels=nchannels,
                         rate=framerate,
                         output=True,
                         output_device_index=self._vb_device_index,
                         frames_per_buffer=1024,
                     )
-                    need_downmix = True
-                else:
-                    raise
+                except OSError:
+                    if nchannels > 1:
+                        logger.info(f"VB-Cable 不支持 {nchannels} 声道，转为单声道播放")
+                        self._stream = p.open(
+                            format=audio_format,
+                            channels=1,
+                            rate=framerate,
+                            output=True,
+                            output_device_index=self._vb_device_index,
+                            frames_per_buffer=1024,
+                        )
+                        need_downmix = True
+                    else:
+                        raise
+            else:
+                logger.info("VB-Cable 未安装，跳过虚拟麦克风输出")
+                self._stream = None
 
+            # ── 监听输出流（可选） ──
             if monitor:
                 try:
                     kwargs = dict(
@@ -134,6 +140,7 @@ class AudioPlayer:
                     logger.warning(f"无法打开监听设备: {e}")
                     self._monitor_stream = None
 
+            # ── 播放循环 ──
             chunk = 1024
             data = wf.readframes(chunk)
             while data and not stop_event.is_set():
@@ -141,9 +148,12 @@ class AudioPlayer:
                     vol = volume_getter()
                     if vol < 0.99:
                         data = self._adjust_chunk_volume(data, sampwidth, vol)
-                if need_downmix and nchannels > 1:
-                    data = self._downmix(data, sampwidth, nchannels)
-                self._stream.write(data)
+
+                # VB-Cable 输出：需要时降混为单声道
+                cable_data = self._downmix(data, sampwidth, nchannels) if need_downmix and nchannels > 1 else data
+
+                if self._stream:
+                    self._stream.write(cable_data)
                 if self._monitor_stream:
                     try:
                         self._monitor_stream.write(data)
@@ -219,6 +229,14 @@ class AudioPlayer:
             except Exception:
                 pass
             self._pyaudio = None
+
+    @property
+    def vb_device_index(self):
+        return self._vb_device_index
+
+    @vb_device_index.setter
+    def vb_device_index(self, value):
+        self._vb_device_index = value
 
     @property
     def is_playing(self):

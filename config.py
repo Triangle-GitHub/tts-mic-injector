@@ -53,10 +53,10 @@ _DEFAULTS = {
     },
     "ui": {
         "window_title": "TTS Mic Injector",
-        "window_width": 960,
+        "window_width": 800,
         "window_height": 620,
         "window_minsize": [600, 520],
-        "panel_min_width": 320,
+        "panel_min_width": 256,
         "panel_hidden_min_width": 400,
         "input_font": ["Microsoft YaHei", 11],
         "input_height": 3,
@@ -107,10 +107,10 @@ _DEFAULTS = {
         },
     },
     "engine_speed_ranges": {
-        "espeak": [80, 450],
-        "sapi5": [50, 400],
-        "piper": [50, 200],
-        "edge": [50, 200],
+        "eSpeak": [80, 450],
+        "SAPI5": [50, 400],
+        "Piper": [50, 200],
+        "Edge": [50, 200],
     },
 }
 

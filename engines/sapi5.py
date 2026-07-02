@@ -39,45 +39,45 @@ class SystemTTSEngine(TTSEngine):
             raise RuntimeError("win32com 未安装。请执行: pip install pywin32")
 
         self._current_voice_index = 0
+        self._voice_list = []
         self._error = None
-        self._voices_done = threading.Event()
+        self._voices_ready = threading.Event()
 
-        def _get_voices():
+        threading.Thread(target=self._get_voices, daemon=True).start()
+
+        logger.info("SAPI5 引擎就绪（正在获取语音列表...）")
+
+    def _get_voices(self):
+        try:
+            pythoncom.CoInitialize()
+        except Exception as e:
+            self._error = str(e)
+            self._voices_ready.set()
+            return
+        try:
+            voice = self._Dispatch("SAPI.SpVoice")
+            voices = voice.GetVoices()
+            self._voice_list = []
+            for i in range(voices.Count):
+                v = voices.Item(i)
+                self._voice_list.append((i, v.GetDescription()))
+            logger.info(f"SAPI5 语音列表已更新，{len(self._voice_list)} 个语音可用")
+        except Exception as e:
+            self._error = str(e)
+        finally:
             try:
-                pythoncom.CoInitialize()
-            except Exception as e:
-                self._error = str(e)
-                self._voices_done.set()
-                return
-            try:
-                voice = self._Dispatch("SAPI.SpVoice")
-                voices = voice.GetVoices()
-                self._voice_list = []
-                for i in range(voices.Count):
-                    v = voices.Item(i)
-                    self._voice_list.append((i, v.GetDescription()))
-            except Exception as e:
-                self._error = str(e)
-            finally:
-                try:
-                    pythoncom.CoUninitialize()
-                except Exception:
-                    pass
-                self._voices_done.set()
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
+            self._voices_ready.set()
 
-        threading.Thread(target=_get_voices, daemon=True).start()
-        self._voices_done.wait(timeout=SAPI5_VOICES_TIMEOUT)
-
-        if self._error:
-            raise RuntimeError(self._error)
-        if not self._voice_list:
-            raise RuntimeError("未找到系统语音")
-
-        self._voices = self._voice_list
-        logger.info(f"SAPI5 引擎就绪，{len(self._voices)} 个语音可用")
+    @property
+    def voices_ready(self):
+        return self._voices_ready.is_set()
 
     def get_voices(self):
-        return [(vid, name) for vid, name in self._voices]
+        self._voices_ready.wait(timeout=SAPI5_VOICES_TIMEOUT)
+        return [(vid, name) for vid, name in self._voice_list]
 
     def set_voice(self, voice_index):
         self._current_voice_index = int(voice_index)

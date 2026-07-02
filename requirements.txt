@@ -1,0 +1,20 @@
+# TTS Mic Injector — Python 依赖
+# pip install -r requirements.txt
+
+# ── GUI 框架 ──
+PyQt5>=5.15
+qfluentwidgets>=1.5.0
+
+# ── 音频设备 ──
+pyaudio>=0.2.11
+
+# ── Windows COM（SAPI5 引擎） ──
+pywin32>=300
+
+# ── TTS 引擎（按需） ──
+edge-tts>=6.1.0
+dashscope>=1.14.0
+pyttsx3>=2.90
+
+# ── 打包（可选） ──
+PyInstaller>=5.0

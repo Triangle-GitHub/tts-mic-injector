@@ -24,6 +24,9 @@ from config import (
     INPUT_FONT, INPUT_HEIGHT, LOG_FONT, LOG_HEIGHT,
     HISTORY_HEIGHT, SPEED_SCALE_LENGTH, VOLUME_SCALE_LENGTH, PITCH_SCALE_LENGTH,
     ALIYUN_API_KEY, ALIYUN_MODEL, ALIYUN_VOICE,
+    ENGINE_SPEED_RANGES, CONCURRENT_MODE_DEFAULT,
+    PANEL_MIN_WIDTH, PANEL_HIDDEN_MIN_WIDTH,
+    THEME_DARK, THEME_LIGHT, get_theme,
     load_aliyun_config, ALIYUN_CONFIG_PATH,
 )
 
@@ -137,6 +140,87 @@ class TestDeepMerge(unittest.TestCase):
         override = {"a": {"b": {"c": 99}}}
         result = _deep_merge(base, override)
         self.assertEqual(result, {"a": {"b": {"c": 99, "d": 2}}})
+
+
+class TestEngineSpeedRanges(unittest.TestCase):
+    """验证引擎语速范围 key 与 UI 引擎名一致，且范围合法。"""
+
+    def test_keys_match_engine_names(self):
+        self.assertEqual(
+            set(ENGINE_SPEED_RANGES.keys()),
+            {"eSpeak", "SAPI5", "Piper", "Edge"},
+        )
+
+    def test_range_valid(self):
+        for name, (lo, hi) in ENGINE_SPEED_RANGES.items():
+            self.assertGreater(hi, lo, f"{name}: hi <= lo")
+            self.assertGreater(lo, 0, f"{name}: lo <= 0")
+
+    def test_all_engines_have_range(self):
+        for name in ("eSpeak", "SAPI5", "Piper", "Edge"):
+            self.assertIn(name, ENGINE_SPEED_RANGES)
+
+
+class TestUIConstants(unittest.TestCase):
+    """验证 UI 布局常量。"""
+
+    def test_panel_min_width_positive(self):
+        self.assertGreater(PANEL_MIN_WIDTH, 0)
+
+    def test_panel_hidden_min_width_positive(self):
+        self.assertGreater(PANEL_HIDDEN_MIN_WIDTH, 0)
+
+    def test_concurrent_mode_default_is_bool(self):
+        self.assertIsInstance(CONCURRENT_MODE_DEFAULT, bool)
+
+
+class TestTheme(unittest.TestCase):
+    """验证主题颜色。"""
+
+    def test_get_theme_dark_returns_dark(self):
+        self.assertIs(get_theme(True), THEME_DARK)
+
+    def test_get_theme_light_returns_light(self):
+        self.assertIs(get_theme(False), THEME_LIGHT)
+
+    def test_dark_theme_has_keys(self):
+        for k in ("window_bg", "chat_bg", "bubble_bg", "bubble_text"):
+            self.assertIn(k, THEME_DARK)
+
+    def test_light_theme_has_keys(self):
+        for k in ("window_bg", "chat_bg", "bubble_bg", "bubble_text"):
+            self.assertIn(k, THEME_LIGHT)
+
+    def test_dark_light_different(self):
+        self.assertNotEqual(THEME_DARK["window_bg"], THEME_LIGHT["window_bg"])
+
+
+# ═══════════════════════════════════════════════════════════
+#  BUG 10 Regression Tests: WINDOW_WIDTH 遵从配置
+#  Bug: main_window.py 硬编码 self.resize(800, ...)
+#       忽略 config 中的 window_width
+#  修复: 使用 WINDOW_WIDTH，config.json 设为 800
+# ═══════════════════════════════════════════════════════════
+
+class TestWindowWidthFromConfig(unittest.TestCase):
+    """验证 WINDOW_WIDTH 从配置加载，值为 800。"""
+
+    def test_window_width_matches_config_json(self):
+        """config.json 中 window_width 应为 800。"""
+        import json
+        from pathlib import Path
+        json_path = Path(__file__).parent.parent / "config.json"
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data["ui"]["window_width"], 800)
+
+    def test_constant_equals_config_default(self):
+        """WINDOW_WIDTH 常量默认值应为 800。"""
+        self.assertEqual(WINDOW_WIDTH, 800)
+
+    def test_constant_is_positive(self):
+        """WINDOW_WIDTH 是正数。"""
+        self.assertGreater(WINDOW_WIDTH, 0)
 
 
 class TestLoadAliyunConfig(unittest.TestCase):

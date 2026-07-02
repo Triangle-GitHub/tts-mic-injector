@@ -125,22 +125,24 @@ class AliyunEngine(TTSEngine):
         if dashscope is None:
             raise RuntimeError("dashscope 未安装。请执行: pip install dashscope")
 
-        # API Key 优先级：环境变量先读，config.json 覆盖之
-        api_key = os.environ.get("DASHSCOPE_API_KEY", "")
         config = load_aliyun_config()
-        if config.get("api_key"):
-            api_key = config["api_key"]
+
+        # 优先级: 构造参数 > config.json > 环境变量
+        api_key = (
+            api_key
+            or config.get("api_key")
+            or os.environ.get("DASHSCOPE_API_KEY", "")
+        )
 
         if not api_key:
             raise RuntimeError(
                 "未配置 DashScope API Key。\n"
-                "  方法1: 设置环境变量 DASHSCOPE_API_KEY\n"
-                "  方法2: 在 config.json 中设置 api_key 字段"
+                "  方法1: 构造时传入 api_key 参数\n"
+                "  方法2: 在 config.json 中设置 api_key 字段\n"
+                "  方法3: 设置环境变量 DASHSCOPE_API_KEY"
             )
         dashscope.api_key = api_key
 
-        # 确定 model 和 voice：优先用传入的，其次 config.json，再默认
-        config = load_aliyun_config()
         self._model = model or config.get("model", "qwen3-tts-flash-realtime")
         self._voice = voice or config.get("voice", "Ethan")
         logger.info(f"Aliyun TTS 就绪，模型: {self._model}, 语音: {self._voice}")

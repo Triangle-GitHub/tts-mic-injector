@@ -6,6 +6,10 @@ TTS Mic Injector — 新入口 (PyQt5 + Fluent Design)
 
 import sys
 import os
+from io import StringIO
+
+_stdout = sys.stdout
+sys.stdout = StringIO()
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
@@ -21,6 +25,8 @@ try:
     import pyttsx3
 except ImportError:
     pyttsx3 = None
+
+sys.stdout = _stdout
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 

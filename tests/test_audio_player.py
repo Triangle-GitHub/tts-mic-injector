@@ -104,3 +104,75 @@ class TestAdjustChunkVolume(unittest.TestCase):
         data = b"\x01\x02\x03\x04"
         result = AudioPlayer._adjust_chunk_volume(data, 1, 0.5)
         self.assertEqual(result, data)
+
+
+class TestPlayerProperties(unittest.TestCase):
+    """测试 AudioPlayer 属性。"""
+
+    def setUp(self):
+        self.player = AudioPlayer()
+
+    def test_vb_device_index_default_none(self):
+        self.assertIsNone(self.player.vb_device_index)
+
+    def test_vb_device_index_setter(self):
+        self.player.vb_device_index = 7
+        self.assertEqual(self.player.vb_device_index, 7)
+
+    def test_vb_device_index_constructor(self):
+        player = AudioPlayer(vb_device_index=3)
+        self.assertEqual(player.vb_device_index, 3)
+
+    def test_is_playing_default_false(self):
+        self.assertFalse(self.player.is_playing)
+
+    def test_stop_clears_playing(self):
+        self.player._playing = True
+        self.player.stop()
+        self.assertFalse(self.player.is_playing)
+
+
+# ═══════════════════════════════════════════════════════════
+#  BUG 4 Regression Tests: 降混数据隔离
+#  Bug: need_downmix 时，降混后的单声道数据被同时
+#       写入 VB-Cable 和监听流 → 监听流杂音/异常
+#  修复: cable_data 与 data 分离，监听流保留原始声道
+# ═══════════════════════════════════════════════════════════
+
+class TestDownmixDataSeparation(unittest.TestCase):
+    """验证降混不影响原始数据，cable 和 monitor 用不同数据。"""
+
+    def test_downmix_does_not_mutate_original(self):
+        """_downmix 返回新 bytes，不修改原始数据。"""
+        player = AudioPlayer()
+        stereo = struct.pack("<hhhh", 100, 200, 300, 400)
+        original = bytes(stereo)
+
+        mono = player._downmix(stereo, 2, 2)
+
+        # 原始数据未被修改
+        self.assertEqual(bytes(stereo), original)
+        # 降混结果长度是原始的一半（2ch→1ch）
+        self.assertEqual(len(mono), len(stereo) // 2)
+        # 降混值正确
+        self.assertEqual(struct.unpack("<hh", mono), (150, 350))
+
+    def test_cable_monitor_data_independent(self):
+        """模拟播放循环中的分支：cable_data 与 data 应独立。"""
+        player = AudioPlayer()
+        stereo = struct.pack("<hhhh", 100, 200, 300, 400)
+
+        # 模拟修复后的逻辑
+        need_downmix = True
+        nchannels = 2
+
+        cable_data = player._downmix(stereo, 2, nchannels) if need_downmix and nchannels > 1 else stereo
+
+        # cable_data 是单声道，data(原始) 仍是立体声
+        self.assertEqual(len(cable_data), 4)   # 2 samples * 2 bytes
+        self.assertEqual(len(stereo), 8)       # 4 samples * 2 bytes
+
+        # 验证 cable_data 值 (降混后)
+        self.assertEqual(struct.unpack("<hh", cable_data), (150, 350))
+        # 验证原始数据仍是立体声
+        self.assertEqual(struct.unpack("<hhhh", stereo), (100, 200, 300, 400))

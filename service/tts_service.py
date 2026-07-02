@@ -14,6 +14,7 @@ from engines import create_engine
 from engines.edge import EdgeEngine
 from engines.sapi5 import SystemTTSEngine
 from config import CONCURRENT_MODE_DEFAULT
+from installer import VBCableInstaller, is_vbcable_installed
 
 try:
     import pyaudio
@@ -35,6 +36,8 @@ class TTSService:
         self._vb_device_index = None
         self._current_wav = None
         self._concurrent_mode = CONCURRENT_MODE_DEFAULT
+        self._vb_cable_available = False
+        self._installer = None
 
         self._callbacks = {}
 
@@ -123,7 +126,7 @@ class TTSService:
         worker_stop = threading.Event()
         self._active_stops.append(worker_stop)
 
-        monitor_idx = self._get_monitor_device_index() if hasattr(self, '_monitor_enabled') else None
+        monitor_idx = self._get_monitor_device_index() if hasattr(self, '_get_monitor_device_index') else None
         player = AudioPlayer(vb_device_index=self._vb_device_index)
         threading.Thread(target=self._speak_worker,
                          args=(text, speed, volume, player, monitor_idx, gen, save_path, worker_stop),
@@ -201,14 +204,44 @@ class TTSService:
         try:
             if pyaudio is None:
                 self._emit("vb_cable_error", "pyaudio 未安装")
+                self._vb_cable_available = False
                 return False
             idx = AudioPlayer.find_vb_cable()
             self._vb_device_index = idx
+            self._vb_cable_available = True
             self._emit("vb_cable_detected", idx)
             return True
         except RuntimeError as e:
+            self._vb_device_index = None
+            self._vb_cable_available = False
             self._emit("vb_cable_error", str(e))
             return False
+
+    @property
+    def vb_cable_available(self) -> bool:
+        return self._vb_cable_available
+
+    def install_vbcable(self):
+        """启动 VB-Cable 一键安装（非阻塞）。"""
+        if VBCableInstaller.is_busy():
+            logger.warning("VB-Cable 安装已在进行中")
+            return self._installer
+
+        self._installer = VBCableInstaller()
+        self._installer.progress.connect(lambda msg: logger.info(f"[VB-Cable] {msg}"))
+        self._installer.finished.connect(self._on_install_finished)
+        self._installer.error_occurred.connect(
+            lambda et, msg: logger.error(f"[VB-Cable] {et}: {msg}")
+        )
+        self._installer.start()
+        return self._installer
+
+    def _on_install_finished(self, success: bool, message: str):
+        if success:
+            logger.info(f"VB-Cable 安装成功: {message}")
+            self.detect_vb_cable()
+        else:
+            logger.error(f"VB-Cable 安装失败: {message}")
 
     def list_monitor_devices(self) -> list:
         """返回所有输出设备列表 [(index, name), ...]."""

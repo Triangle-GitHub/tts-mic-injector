@@ -257,6 +257,40 @@ class TestTTSServiceDeviceDetection(unittest.TestCase):
             devices = s.list_monitor_devices()
             self.assertEqual(devices, [(0, "Speakers"), (1, "Headphones")])
 
+    def test_vb_cable_available_after_detection(self):
+        s = TTSService()
+        self.assertFalse(s.vb_cable_available)
+
+        with patch("service.tts_service.AudioPlayer.find_vb_cable", return_value=7):
+            s.detect_vb_cable()
+            self.assertTrue(s.vb_cable_available)
+
+    def test_vb_cable_not_available_on_error(self):
+        s = TTSService()
+        with patch("service.tts_service.AudioPlayer.find_vb_cable",
+                   side_effect=RuntimeError("not found")):
+            s.detect_vb_cable()
+            self.assertFalse(s.vb_cable_available)
+
+    def test_install_vbcable_returns_installer(self):
+        s = TTSService()
+        with patch("service.tts_service.VBCableInstaller") as mock_installer_class:
+            mock_installer = MagicMock()
+            mock_installer.is_busy.return_value = False
+            mock_installer_class.return_value = mock_installer
+            mock_installer_class.is_busy.return_value = False
+
+            result = s.install_vbcable()
+            mock_installer.start.assert_called_once()
+            self.assertIsNotNone(result)
+
+    def test_install_vbcable_busy_returns_none(self):
+        s = TTSService()
+        with patch("service.tts_service.VBCableInstaller") as mock_installer_class:
+            mock_installer_class.is_busy.return_value = True
+            result = s.install_vbcable()
+            self.assertIsNone(result)
+
 
 class TestTTSServiceGetters(unittest.TestCase):
     """UI 状态获取器注入。"""
@@ -271,3 +305,37 @@ class TestTTSServiceGetters(unittest.TestCase):
         s = TTSService()
         s.set_monitor_state_getter(lambda: True)
         self.assertTrue(s._get_monitor_enabled())
+
+
+# ═══════════════════════════════════════════════════════════
+#  BUG 2 Regression Tests: 监听设备 getter 注入
+#  Bug: hasattr(self, '_monitor_enabled') 永远 False
+#        → monitor_idx 永远为 None
+#       应使用 hasattr(self, '_get_monitor_device_index')
+# ═══════════════════════════════════════════════════════════
+
+class TestMonitorDeviceGetter(unittest.TestCase):
+    """验证监听设备索引 getter 注入后能被 speak() 正确使用。"""
+
+    def test_getter_not_injected_returns_none(self):
+        """未注入 getter 时 monitor_idx 应为 None。"""
+        s = TTSService()
+        self.assertFalse(hasattr(s, "_get_monitor_device_index"))
+        # speak() 中的检查应返回 None（不崩溃）
+        monitor_idx = s._get_monitor_device_index() if hasattr(s, "_get_monitor_device_index") else None
+        self.assertIsNone(monitor_idx)
+
+    def test_getter_injected_returns_value(self):
+        """注入 getter 后 speak() 应能获取监听设备索引。"""
+        s = TTSService()
+        s.set_monitor_device_getter(lambda: 3)
+        self.assertTrue(hasattr(s, "_get_monitor_device_index"))
+        monitor_idx = s._get_monitor_device_index() if hasattr(s, "_get_monitor_device_index") else None
+        self.assertEqual(monitor_idx, 3)
+
+    def test_getter_returns_none_when_disabled(self):
+        """getter 返回 None 时（监听关闭），speak() 中 monitor_idx 为 None。"""
+        s = TTSService()
+        s.set_monitor_device_getter(lambda: None)
+        monitor_idx = s._get_monitor_device_index() if hasattr(s, "_get_monitor_device_index") else None
+        self.assertIsNone(monitor_idx)
