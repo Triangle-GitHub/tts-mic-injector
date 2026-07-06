@@ -22,15 +22,15 @@ from qfluentwidgets import (
 )
 
 from config import (
-    SPEED_DEFAULT, SPEED_MIN, SPEED_MAX,
-    VOLUME_DEFAULT, PITCH_DEFAULT,
+    SPEED_MIN, SPEED_MAX,
+    VOLUME_DEFAULT,
     WINDOW_TITLE, WINDOW_MINSIZE,
     INPUT_FONT, INPUT_HEIGHT,
     LOG_FONT, LOG_HEIGHT,
     HISTORY_HEIGHT,
     SPEED_SCALE_LENGTH, VOLUME_SCALE_LENGTH, PITCH_SCALE_LENGTH,
     EDGE_PITCH_MIN, EDGE_PITCH_MAX,
-    MONITOR_ENABLED_DEFAULT,
+    MONITOR_ENABLED_DEFAULT, get_engine_default,
 )
 from engines.edge import EdgeEngine
 from engines.sapi5 import SystemTTSEngine
@@ -284,12 +284,12 @@ class TTSInterface(QWidget):
         bar.addWidget(BodyLabel("语速:"))
         self._speed_slider = Slider(Qt.Horizontal)
         self._speed_slider.setRange(SPEED_MIN, SPEED_MAX)
-        self._speed_slider.setValue(SPEED_DEFAULT)
+        self._speed_slider.setValue(get_engine_default("SAPI5").get("speed", 225))
         self._speed_slider.setMinimumWidth(SPEED_SCALE_LENGTH)
         self._speed_slider.valueChanged.connect(self._on_speed_change)
         bar.addWidget(self._speed_slider)
 
-        self._speed_label = BodyLabel(str(SPEED_DEFAULT))
+        self._speed_label = BodyLabel(str(get_engine_default("SAPI5").get("speed", 225)))
         self._speed_label.setMinimumWidth(36)
         bar.addWidget(self._speed_label)
 
@@ -363,7 +363,7 @@ class TTSInterface(QWidget):
         self._pitch_slider.valueChanged.connect(self._on_pitch_change)
         layout.addWidget(self._pitch_slider)
 
-        self._pitch_label = BodyLabel("0Hz")
+        self._pitch_label = BodyLabel(f"{edge_pitch:+d}Hz")
         layout.addWidget(self._pitch_label)
         layout.addStretch()
 
@@ -451,7 +451,7 @@ class TTSInterface(QWidget):
             self._voice_group.hide()
             self._pitch_group.hide()
             self._edge_locale_combo.hide()
-            self._update_speed_range(self.ENGINE_SPEED_RANGES["eSpeak"])
+            self._update_speed_range("eSpeak", self.ENGINE_SPEED_RANGES["eSpeak"])
             logger.info("切换到引擎: eSpeak")
 
         elif name == "SAPI5":
@@ -466,7 +466,7 @@ class TTSInterface(QWidget):
             self._pitch_group.hide()
             self._edge_locale_combo.hide()
             self._voice_group.show()
-            self._update_speed_range(self.ENGINE_SPEED_RANGES["SAPI5"])
+            self._update_speed_range("SAPI5", self.ENGINE_SPEED_RANGES["SAPI5"])
             logger.info("切换到引擎: SAPI5")
 
         elif name == "Piper":
@@ -478,7 +478,7 @@ class TTSInterface(QWidget):
             self._pitch_group.hide()
             self._edge_locale_combo.hide()
             self._voice_group.show()
-            self._update_speed_range(self.ENGINE_SPEED_RANGES["Piper"])
+            self._update_speed_range("Piper", self.ENGINE_SPEED_RANGES["Piper"])
             logger.info("切换到引擎: Piper")
 
         elif name == "Edge":
@@ -492,10 +492,11 @@ class TTSInterface(QWidget):
             self._edge_locale_combo.show()
             self._populate_edge_locales()
             self._pitch_group.show()
-            self._pitch_slider.setValue(PITCH_DEFAULT)
-            self._pitch_label.setText(f"{int(PITCH_DEFAULT)}Hz")
+            edge_pitch = get_engine_default("Edge").get("pitch", 0)
+            self._pitch_slider.setValue(edge_pitch)
+            self._pitch_label.setText(f"{int(edge_pitch)}Hz")
             self._voice_group.show()
-            self._update_speed_range(self.ENGINE_SPEED_RANGES["Edge"])
+            self._update_speed_range("Edge", self.ENGINE_SPEED_RANGES["Edge"])
             logger.info("切换到引擎: Edge")
 
         elif name == "Aliyun":
@@ -632,15 +633,15 @@ class TTSInterface(QWidget):
             self._service.engine.set_voice(voice_id)
             logger.info(f"语音切换为: {selected_name}")
 
-    def _update_speed_range(self, range_tuple):
+    def _update_speed_range(self, engine_name, range_tuple):
         if range_tuple is None:
             return
         lo, hi = range_tuple
         self._speed_slider.setRange(lo, hi)
         self._speed_slider.setEnabled(True)
-        mid = (lo + hi) // 2
-        self._speed_slider.setValue(mid)
-        self._speed_label.setText(str(mid))
+        default = get_engine_default(engine_name).get("speed", (lo + hi) // 2)
+        self._speed_slider.setValue(default)
+        self._speed_label.setText(str(default))
 
     # ── 监听 ──
     def _on_monitor_toggle(self, checked):

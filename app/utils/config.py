@@ -123,9 +123,7 @@ class Config(QConfig):
     aliyunSynthTimeout = ConfigItem("timeouts", "aliyun_synth", 120, IntValidator(120), IntSerializer())
 
     # ── 默认值 ──
-    speedDefault = ConfigItem("defaults", "speed", 175, IntValidator(175), IntSerializer())
     volumeDefault = ConfigItem("defaults", "volume", 100, IntValidator(200), IntSerializer())
-    pitchDefault = ConfigItem("defaults", "pitch", 0, IntValidator(0), IntSerializer())
     monitorEnabledDefault = OptionsConfigItem(
         "defaults", "monitor_enabled", True,
         OptionsValidator([True, False]), BooleanSerializer()
@@ -165,7 +163,7 @@ def _load_config_json_to_qconfig():
         if not isinstance(sd, dict):
             continue
         for key, value in sd.items():
-            if isinstance(value, list):
+            if isinstance(value, (list, dict)):
                 continue
             qkey = f"{section}/{key}"
             try:

@@ -13,15 +13,15 @@ import os
 from datetime import datetime
 
 from config import (
-    SPEED_DEFAULT, SPEED_MIN, SPEED_MAX,
-    VOLUME_DEFAULT, PITCH_DEFAULT,
+    SPEED_MIN, SPEED_MAX,
+    VOLUME_DEFAULT,
     WINDOW_TITLE, WINDOW_GEOMETRY, WINDOW_MINSIZE,
     INPUT_FONT, INPUT_HEIGHT,
     LOG_FONT, LOG_HEIGHT,
     HISTORY_HEIGHT,
     SPEED_SCALE_LENGTH, VOLUME_SCALE_LENGTH, PITCH_SCALE_LENGTH,
     EDGE_PITCH_MIN, EDGE_PITCH_MAX,
-    MONITOR_ENABLED_DEFAULT,
+    MONITOR_ENABLED_DEFAULT, get_engine_default,
 )
 from engines.edge import EdgeEngine
 from engines.sapi5 import SystemTTSEngine
@@ -164,13 +164,13 @@ class TTSMicInjectorApp:
         self._stop_btn.pack(side=tk.LEFT, padx=(0, 12))
 
         ttk.Label(ctrl_frame, text="语速:").pack(side=tk.LEFT)
-        self._speed_var = tk.DoubleVar(value=SPEED_DEFAULT)
+        self._speed_var = tk.DoubleVar(value=get_engine_default("eSpeak").get("speed", 175))
         self._speed_scale = ttk.Scale(
             ctrl_frame, from_=SPEED_MIN, to=SPEED_MAX, variable=self._speed_var,
             orient=tk.HORIZONTAL, length=SPEED_SCALE_LENGTH, command=self._on_speed_change
         )
         self._speed_scale.pack(side=tk.LEFT, padx=4)
-        self._speed_label = ttk.Label(ctrl_frame, text=f"{SPEED_DEFAULT}")
+        self._speed_label = ttk.Label(ctrl_frame, text=f"{get_engine_default('eSpeak').get('speed', 175)}")
         self._speed_label.pack(side=tk.LEFT, padx=(0, 12))
 
         ttk.Label(ctrl_frame, text="音量:").pack(side=tk.LEFT)
@@ -218,13 +218,14 @@ class TTSMicInjectorApp:
         # ── Edge 音调（仅 Edge 可见） ──
         self._pitch_frame = ttk.LabelFrame(main_frame, text="Edge 音调", padding=4)
         ttk.Label(self._pitch_frame, text="音调:").pack(side=tk.LEFT)
-        self._pitch_var = tk.DoubleVar(value=PITCH_DEFAULT)
+        edge_pitch = get_engine_default("Edge").get("pitch", 0)
+        self._pitch_var = tk.DoubleVar(value=edge_pitch)
         self._pitch_scale = ttk.Scale(
             self._pitch_frame, from_=EDGE_PITCH_MIN, to=EDGE_PITCH_MAX, variable=self._pitch_var,
             orient=tk.HORIZONTAL, length=PITCH_SCALE_LENGTH, command=self._on_pitch_change
         )
         self._pitch_scale.pack(side=tk.LEFT, padx=4)
-        self._pitch_label = ttk.Label(self._pitch_frame, text="0Hz")
+        self._pitch_label = ttk.Label(self._pitch_frame, text=f"{edge_pitch}Hz")
         self._pitch_label.pack(side=tk.LEFT)
 
         # ── 监听 + 状态 ──
@@ -280,7 +281,7 @@ class TTSMicInjectorApp:
             self._voice_frame.pack_forget()
             self._pitch_frame.pack_forget()
             self._edge_locale_combo.pack_forget()
-            self._update_speed_range(self._service.get_speed_range())
+            self._update_speed_range("eSpeak", self._service.get_speed_range())
             logger.info("切换到引擎: eSpeak")
 
         elif name == "SAPI5":
@@ -296,7 +297,7 @@ class TTSMicInjectorApp:
             self._voice_frame.pack(fill=tk.X, pady=(0, 6), before=self._bottom_frame)
             self._pitch_frame.pack_forget()
             self._edge_locale_combo.pack_forget()
-            self._update_speed_range(self._service.get_speed_range())
+            self._update_speed_range("SAPI5", self._service.get_speed_range())
             logger.info("切换到引擎: SAPI5")
 
         elif name == "Piper":
@@ -309,7 +310,7 @@ class TTSMicInjectorApp:
             self._voice_frame.pack(fill=tk.X, pady=(0, 6), before=self._bottom_frame)
             self._pitch_frame.pack_forget()
             self._edge_locale_combo.pack_forget()
-            self._update_speed_range(self._service.get_speed_range())
+            self._update_speed_range("Piper", self._service.get_speed_range())
             logger.info("切换到引擎: Piper")
 
         elif name == "Edge":
@@ -326,9 +327,10 @@ class TTSMicInjectorApp:
             self._populate_edge_locales()
             self._voice_frame.pack(fill=tk.X, pady=(0, 6), before=self._bottom_frame)
             self._pitch_frame.pack(fill=tk.X, pady=(0, 6), before=self._bottom_frame)
-            self._pitch_var.set(PITCH_DEFAULT)
-            self._pitch_label.config(text=f"{int(PITCH_DEFAULT)}Hz")
-            self._update_speed_range(self._service.get_speed_range())
+            edge_pitch = get_engine_default("Edge").get("pitch", 0)
+            self._pitch_var.set(edge_pitch)
+            self._pitch_label.config(text=f"{int(edge_pitch)}Hz")
+            self._update_speed_range("Edge", self._service.get_speed_range())
             logger.info("切换到引擎: Edge")
 
         elif name == "Aliyun":
@@ -443,14 +445,14 @@ class TTSMicInjectorApp:
             self._service.engine.set_voice(voice_id)
             logger.info(f"语音切换为: {selected_name}")
 
-    def _update_speed_range(self, range_tuple):
+    def _update_speed_range(self, engine_name, range_tuple):
         if range_tuple is None:
             return
         lo, hi = range_tuple
         self._speed_scale.config(from_=lo, to=hi, state=tk.NORMAL)
-        mid = (lo + hi) // 2
-        self._speed_var.set(mid)
-        self._speed_label.config(text=str(mid))
+        default = get_engine_default(engine_name).get("speed", (lo + hi) // 2)
+        self._speed_var.set(default)
+        self._speed_label.config(text=str(default))
 
     def _on_monitor_toggle(self):
         if self._monitor_enabled.get():

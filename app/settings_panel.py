@@ -24,14 +24,14 @@ from qfluentwidgets import (
 )
 
 from config import (
-    SPEED_DEFAULT, SPEED_MIN, SPEED_MAX,
-    VOLUME_DEFAULT, PITCH_DEFAULT,
+    SPEED_MIN, SPEED_MAX,
+    VOLUME_DEFAULT,
     SPEED_SCALE_LENGTH, VOLUME_SCALE_LENGTH,
     EDGE_PITCH_MIN, EDGE_PITCH_MAX,
     MONITOR_ENABLED_DEFAULT,
     PANEL_MIN_WIDTH, ENGINE_SPEED_RANGES, get_theme,
     REMOTE_ENABLED, REMOTE_SERVER_URL, REMOTE_TOKEN,
-    save_remote_config,
+    save_remote_config, get_engine_default,
 )
 from engines.edge import EdgeEngine
 from service.tts_service import TTSService
@@ -124,7 +124,7 @@ class SettingsPanel(QWidget):
 
     @property
     def speed_value(self):
-        return self._speed_slider.value() if self._speed_slider.isEnabled() else SPEED_DEFAULT
+        return self._speed_slider.value() if self._speed_slider.isEnabled() else get_engine_default(self._service.engine_name).get("speed", 175)
 
     @property
     def volume_value(self):
@@ -308,11 +308,11 @@ class SettingsPanel(QWidget):
         sr.addWidget(BodyLabel("语速:"))
         self._speed_slider = Slider(Qt.Horizontal)
         self._speed_slider.setRange(SPEED_MIN, SPEED_MAX)
-        self._speed_slider.setValue(SPEED_DEFAULT)
+        self._speed_slider.setValue(get_engine_default("SAPI5").get("speed", 225))
         self._speed_slider.valueChanged.connect(self._on_speed_change)
         self._speed_slider.setMinimumWidth(SPEED_SCALE_LENGTH)
         sr.addWidget(self._speed_slider, stretch=1)
-        self._speed_label = BodyLabel(str(SPEED_DEFAULT))
+        self._speed_label = BodyLabel(str(get_engine_default("SAPI5").get("speed", 225)))
         self._speed_label.setMinimumWidth(36)
         sr.addWidget(self._speed_label)
         es.addWidget(self._speed_row)
@@ -324,10 +324,10 @@ class SettingsPanel(QWidget):
         pr.addWidget(BodyLabel("音调:"))
         self._pitch_slider = Slider(Qt.Horizontal)
         self._pitch_slider.setRange(EDGE_PITCH_MIN, EDGE_PITCH_MAX)
-        self._pitch_slider.setValue(PITCH_DEFAULT)
+        self._pitch_slider.setValue(get_engine_default("Edge").get("pitch", 0))
         self._pitch_slider.valueChanged.connect(self._on_pitch_change)
         pr.addWidget(self._pitch_slider, stretch=1)
-        self._pitch_label = BodyLabel(f"{PITCH_DEFAULT:+d}Hz")
+        self._pitch_label = BodyLabel(f"{get_engine_default('Edge').get('pitch', 0):+d}Hz")
         self._pitch_label.setMinimumWidth(42)
         pr.addWidget(self._pitch_label)
         self._pitch_row.hide()
@@ -507,7 +507,7 @@ class SettingsPanel(QWidget):
             self._highlight_engine_btn("Edge")
             self._show_engine_settings("Edge")
             self._populate_edge_locales()
-            self._update_speed_range(ENGINE_SPEED_RANGES["Edge"])
+            self._update_speed_range("Edge", ENGINE_SPEED_RANGES["Edge"])
 
         elif name == "SAPI5":
             if pythoncom is None:
@@ -518,14 +518,14 @@ class SettingsPanel(QWidget):
             self._highlight_engine_btn("SAPI5")
             self._show_engine_settings("SAPI5")
             self._populate_voice_combo()
-            self._update_speed_range(ENGINE_SPEED_RANGES["SAPI5"])
+            self._update_speed_range("SAPI5", ENGINE_SPEED_RANGES["SAPI5"])
 
         elif name == "eSpeak":
             if not self._service.switch_engine("eSpeak"):
                 return
             self._highlight_engine_btn("eSpeak")
             self._show_engine_settings("eSpeak")
-            self._update_speed_range(ENGINE_SPEED_RANGES["eSpeak"])
+            self._update_speed_range("eSpeak", ENGINE_SPEED_RANGES["eSpeak"])
 
         elif name == "Piper":
             if not self._service.switch_engine("Piper"):
@@ -533,7 +533,7 @@ class SettingsPanel(QWidget):
             self._highlight_engine_btn("Piper")
             self._show_engine_settings("Piper")
             self._populate_voice_combo()
-            self._update_speed_range(ENGINE_SPEED_RANGES["Piper"])
+            self._update_speed_range("Piper", ENGINE_SPEED_RANGES["Piper"])
 
         else:
             logger.info(f"引擎 {name} 尚未实现")
@@ -551,8 +551,9 @@ class SettingsPanel(QWidget):
             self._speed_slider.setEnabled(True)
 
         if name in edge_only:
-            self._pitch_slider.setValue(PITCH_DEFAULT)
-            self._pitch_label.setText(f"{PITCH_DEFAULT:+d}Hz")
+            edge_pitch = get_engine_default("Edge").get("pitch", 0)
+            self._pitch_slider.setValue(edge_pitch)
+            self._pitch_label.setText(f"{edge_pitch:+d}Hz")
 
     # ── 语音选择 ──
 
@@ -660,15 +661,15 @@ class SettingsPanel(QWidget):
 
     # ── 语速 / 音量 / 音调 ──
 
-    def _update_speed_range(self, range_tuple):
+    def _update_speed_range(self, engine_name, range_tuple):
         if range_tuple is None:
             return
         lo, hi = range_tuple
         self._speed_slider.setRange(lo, hi)
         self._speed_slider.setEnabled(True)
-        mid = (lo + hi) // 2
-        self._speed_slider.setValue(mid)
-        self._speed_label.setText(str(mid))
+        default = get_engine_default(engine_name).get("speed", (lo + hi) // 2)
+        self._speed_slider.setValue(default)
+        self._speed_label.setText(str(default))
 
     def _on_speed_change(self, val):
         self._speed_label.setText(str(int(val)))

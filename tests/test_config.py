@@ -12,19 +12,20 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import (
-    ESPEAK_PATH, SPEED_DEFAULT, SPEED_MIN, SPEED_MAX, VOLUME_MAX,
+    ESPEAK_PATH, SPEED_MIN, SPEED_MAX, VOLUME_MAX,
     VB_CABLE_KEYWORDS, LOG_MAX_LINES,
     EDGE_DEFAULT_VOICE, PIPER_PATH, PIPER_MODEL_DIR,
     FFMPEG_PATH, EDGE_PITCH_MIN, EDGE_PITCH_MAX,
     ESPEAK_SYNTH_TIMEOUT, SAPI5_VOICES_TIMEOUT, SAPI5_SYNTH_TIMEOUT,
     PIPER_SYNTH_TIMEOUT, ALIYUN_SYNTH_TIMEOUT,
-    VOLUME_DEFAULT, PITCH_DEFAULT, MONITOR_ENABLED_DEFAULT,
+    VOLUME_DEFAULT, MONITOR_ENABLED_DEFAULT,
     PIPER_LENGTH_SCALE_MIN, PIPER_LENGTH_SCALE_MAX,
     WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_MINSIZE,
     INPUT_FONT, INPUT_HEIGHT, LOG_FONT, LOG_HEIGHT,
     HISTORY_HEIGHT, SPEED_SCALE_LENGTH, VOLUME_SCALE_LENGTH, PITCH_SCALE_LENGTH,
     ALIYUN_API_KEY, ALIYUN_MODEL, ALIYUN_VOICE,
-    ENGINE_SPEED_RANGES, CONCURRENT_MODE_DEFAULT,
+    ENGINE_SPEED_RANGES, ENGINE_DEFAULTS, get_engine_default,
+    CONCURRENT_MODE_DEFAULT,
     PANEL_MIN_WIDTH, PANEL_HIDDEN_MIN_WIDTH,
     THEME_DARK, THEME_LIGHT, get_theme,
     load_aliyun_config, ALIYUN_CONFIG_PATH,
@@ -41,7 +42,6 @@ class TestConstants(unittest.TestCase):
         self.assertEqual(EDGE_DEFAULT_VOICE, "zh-CN-YunxiNeural")
 
     def test_numeric_constants(self):
-        self.assertEqual(SPEED_DEFAULT, 175)
         self.assertEqual(SPEED_MIN, 80)
         self.assertEqual(SPEED_MAX, 450)
         self.assertEqual(LOG_MAX_LINES, 200)
@@ -159,6 +159,54 @@ class TestEngineSpeedRanges(unittest.TestCase):
     def test_all_engines_have_range(self):
         for name in ("eSpeak", "SAPI5", "Piper", "Edge"):
             self.assertIn(name, ENGINE_SPEED_RANGES)
+
+
+class TestEngineDefaults(unittest.TestCase):
+    """验证 engine_defaults 配置和 get_engine_default()。"""
+
+    def test_engine_defaults_keys_match_engine_names(self):
+        self.assertEqual(
+            set(ENGINE_DEFAULTS.keys()),
+            {"eSpeak", "SAPI5", "Piper", "Edge", "Aliyun"},
+        )
+
+    def test_get_engine_default_espeak(self):
+        d = get_engine_default("eSpeak")
+        self.assertEqual(d["speed"], 175)
+        self.assertEqual(d["pitch"], 50)
+
+    def test_get_engine_default_sapi5(self):
+        d = get_engine_default("SAPI5")
+        self.assertEqual(d["speed"], 225)
+        self.assertNotIn("pitch", d)
+
+    def test_get_engine_default_piper(self):
+        d = get_engine_default("Piper")
+        self.assertEqual(d["speed"], 125)
+        self.assertNotIn("pitch", d)
+
+    def test_get_engine_default_edge(self):
+        d = get_engine_default("Edge")
+        self.assertEqual(d["speed"], 125)
+        self.assertEqual(d["pitch"], 0)
+
+    def test_get_engine_default_aliyun(self):
+        d = get_engine_default("Aliyun")
+        self.assertEqual(d, {})
+
+    def test_get_engine_default_unknown(self):
+        d = get_engine_default("UnknownEngine")
+        self.assertEqual(d, {})
+
+    def test_speed_within_engine_range(self):
+        for name, defaults in ENGINE_DEFAULTS.items():
+            if name not in ENGINE_SPEED_RANGES:
+                continue
+            lo, hi = ENGINE_SPEED_RANGES[name]
+            spd = defaults.get("speed")
+            if spd is not None:
+                self.assertGreaterEqual(spd, lo, f"{name} speed {spd} < {lo}")
+                self.assertLessEqual(spd, hi, f"{name} speed {spd} > {hi}")
 
 
 class TestUIConstants(unittest.TestCase):

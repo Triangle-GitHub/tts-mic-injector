@@ -70,14 +70,19 @@ _DEFAULTS = {
         "aliyun_synth": 120,
     },
     "defaults": {
-        "speed": 175,
         "volume": 100,
-        "pitch": 0,
         "monitor_enabled": True,
         "piper_length_scale_min": 0.2,
         "piper_length_scale_max": 5.0,
         "concurrent_mode": False,
         "disable_log_file": False,
+    },
+    "engine_defaults": {
+        "eSpeak": {"speed": 175, "pitch": 50},
+        "SAPI5":  {"speed": 225},
+        "Piper":  {"speed": 125},
+        "Edge":   {"speed": 125, "pitch": 0},
+        "Aliyun": {},
     },
     "ui": {
         "window_title": "TTS Mic Injector",
@@ -213,9 +218,7 @@ PIPER_SYNTH_TIMEOUT = _cfg["timeouts"]["piper_synth"]
 ALIYUN_SYNTH_TIMEOUT = _cfg["timeouts"]["aliyun_synth"]
 
 # ── 默认值 ──
-SPEED_DEFAULT = _cfg["defaults"]["speed"]
 VOLUME_DEFAULT = _cfg["defaults"]["volume"]
-PITCH_DEFAULT = _cfg["defaults"]["pitch"]
 MONITOR_ENABLED_DEFAULT = _cfg["defaults"]["monitor_enabled"]
 PIPER_LENGTH_SCALE_MIN = _cfg["defaults"]["piper_length_scale_min"]
 PIPER_LENGTH_SCALE_MAX = _cfg["defaults"]["piper_length_scale_max"]
@@ -226,6 +229,7 @@ DISABLE_LOG_FILE = _cfg["defaults"]["disable_log_file"]
 WINDOW_TITLE = _cfg["ui"]["window_title"]
 WINDOW_WIDTH = _cfg["ui"]["window_width"]
 WINDOW_HEIGHT = _cfg["ui"]["window_height"]
+WINDOW_GEOMETRY = f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}"
 WINDOW_MINSIZE = tuple(_cfg["ui"]["window_minsize"])
 PANEL_MIN_WIDTH = _cfg["ui"]["panel_min_width"]
 PANEL_HIDDEN_MIN_WIDTH = _cfg["ui"]["panel_hidden_min_width"]
@@ -261,6 +265,15 @@ def get_theme(dark: bool) -> dict:
 SPEED_MIN = 80
 SPEED_MAX = 450
 VOLUME_MAX = 1.0  # 未实际使用，保留兼容
+
+# ── 引擎默认参数 ──
+ENGINE_DEFAULTS = _cfg["engine_defaults"]
+
+
+def get_engine_default(engine_name: str) -> dict:
+    """返回指定引擎的默认参数 dict，包含 'speed' 和可选的 'pitch' 键。
+    未知引擎返回空 dict。"""
+    return ENGINE_DEFAULTS.get(engine_name, {})
 
 
 def get_aliyun_config():

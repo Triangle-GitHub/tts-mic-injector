@@ -8,16 +8,15 @@ qfluentwidgets>=1.5.0
 # ── 音频设备 ──
 pyaudio>=0.2.11
 
-# ── Windows COM（SAPI5 引擎） ──
+# ── Windows COM（SAPI5 引擎，必装） ──
 pywin32>=300
 
 # ── TTS 引擎（按需） ──
-edge-tts>=6.1.0
-dashscope>=1.14.0
-pyttsx3>=2.90
+# edge-tts>=6.1.0
+# dashscope>=1.14.0
 
 # ── 打包（可选） ──
-PyInstaller>=5.0
+# PyInstaller>=5.0
 
 # ── WebSocket 通信 ──
-websocket-client>=1.6
+# websocket-client>=1.6
