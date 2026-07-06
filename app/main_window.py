@@ -17,6 +17,7 @@ from qfluentwidgets import MSFluentWindow, setTheme, setThemeColor, Theme, isDar
 
 from service.tts_service import TTSService
 from app.chat_widget import ChatWidget
+from app.remote_receiver import RemoteReceiver
 from app.settings_panel import SettingsPanel
 from app.utils import cfg
 from engines.edge import EdgeEngine
@@ -140,6 +141,9 @@ class MainWindow(MSFluentWindow):
         self._chat = ChatWidget(self._service)
         self._settings = SettingsPanel(self._service)
 
+        self._remote = None
+        self._settings.set_remote_control_callback(self._on_remote_control)
+
         self._chat.set_speak_callback(self._on_speak)
         self._settings.set_theme_change_callback(self._on_theme_changed)
 
@@ -240,6 +244,25 @@ class MainWindow(MSFluentWindow):
             self._panel_visible = False
             self._panel_toggle.setToolTip("显示右侧面板")
 
+    def _on_remote_control(self, enabled):
+        if enabled:
+            if self._remote:
+                self._remote.stop()
+            url = self._settings.remote_server_url
+            token = self._settings.remote_token
+            self._remote = RemoteReceiver(url, token, parent=self)
+            self._remote.message_received.connect(self._on_remote_message)
+            self._settings.set_remote_receiver(self._remote)
+            self._remote.start()
+        else:
+            if self._remote:
+                self._remote.stop()
+                self._remote = None
+
+    def _on_remote_message(self, text: str):
+        self._chat.add_message(text)
+        self._on_speak(text, False)
+
     def _on_speak(self, text: str, save_to_disk: bool = False):
         speed = self._settings.speed_value
         volume = self._settings.volume_value / 100.0
@@ -293,6 +316,8 @@ class MainWindow(MSFluentWindow):
 
     def closeEvent(self, event):
         self._chat.stop()
+        if self._remote:
+            self._remote.stop()
         self._service.stop()
         if isinstance(self._service.engine, SystemTTSEngine):
             self._service.engine.stop()

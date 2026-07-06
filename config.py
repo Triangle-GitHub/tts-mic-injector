@@ -140,6 +140,11 @@ _DEFAULTS = {
         "Piper": [50, 200],
         "Edge": [50, 200],
     },
+    "remote": {
+        "enabled": False,
+        "server_url": "ws://127.0.0.1:8765/ws",
+        "token": "",
+    },
 }
 
 
@@ -228,6 +233,11 @@ PITCH_SCALE_LENGTH = _cfg["ui"]["pitch_scale_length"]
 # ── 引擎语速范围 ──
 ENGINE_SPEED_RANGES = {k: tuple(v) for k, v in _cfg["engine_speed_ranges"].items()}
 
+# ── 远程连接 ──
+REMOTE_ENABLED = _cfg["remote"]["enabled"]
+REMOTE_SERVER_URL = _cfg["remote"]["server_url"]
+REMOTE_TOKEN = _cfg["remote"]["token"]
+
 # ── 主题颜色 ──
 THEME_DARK = _cfg["theme"]["dark"]
 THEME_LIGHT = _cfg["theme"]["light"]
@@ -255,3 +265,25 @@ def get_aliyun_config():
 
 # 兼容旧函数名
 load_aliyun_config = get_aliyun_config
+
+
+def save_remote_config(server_url: str, token: str, enabled: bool) -> bool:
+    """将远程连接配置写入 config.json。返回 True 表示保存成功。"""
+    try:
+        if ALIYUN_CONFIG_PATH.exists():
+            with open(ALIYUN_CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        else:
+            cfg = {}
+    except Exception:
+        cfg = {}
+    cfg.setdefault("remote", {})
+    cfg["remote"]["server_url"] = server_url
+    cfg["remote"]["token"] = token
+    cfg["remote"]["enabled"] = enabled
+    try:
+        with open(ALIYUN_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=4, ensure_ascii=False)
+        return True
+    except Exception:
+        return False

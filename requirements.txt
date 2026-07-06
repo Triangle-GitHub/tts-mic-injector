@@ -18,3 +18,6 @@ pyttsx3>=2.90
 
 # ── 打包（可选） ──
 PyInstaller>=5.0
+
+# ── WebSocket 通信 ──
+websocket-client>=1.6

@@ -102,5 +102,11 @@
         "SAPI5": [50, 400],
         "Piper": [50, 200],
         "Edge": [50, 200]
+    },
+
+    "remote": {
+        "enabled": false,
+        "server_url": "ws://127.0.0.1:8765/ws",
+        "token": ""
     }
 }

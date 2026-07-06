@@ -8,19 +8,18 @@ import logging
 
 import subprocess
 
-from PyQt5.QtCore import Qt, QTimer, QEvent, pyqtSignal, QPointF
+from PyQt5.QtCore import Qt, QTimer, QEvent, pyqtSignal, QPointF, QPoint
 from PyQt5.QtGui import QPen, QColor
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFrame,
     QMessageBox, QApplication, QSizePolicy,
 )
 import sys
-import os
 from pathlib import Path
 
 from qfluentwidgets import (
-    PushButton, Slider, ComboBox, SwitchButton,
-    BodyLabel, SubtitleLabel,
+    PushButton, PrimaryPushButton, Slider, ComboBox,
+    SwitchButton, BodyLabel, SubtitleLabel, LineEdit,
     TextEdit, Theme, setTheme, isDarkTheme,
 )
 
@@ -31,6 +30,8 @@ from config import (
     EDGE_PITCH_MIN, EDGE_PITCH_MAX,
     MONITOR_ENABLED_DEFAULT,
     PANEL_MIN_WIDTH, ENGINE_SPEED_RANGES, get_theme,
+    REMOTE_ENABLED, REMOTE_SERVER_URL, REMOTE_TOKEN,
+    save_remote_config,
 )
 from engines.edge import EdgeEngine
 from service.tts_service import TTSService
@@ -85,6 +86,21 @@ class SettingsPanel(QWidget):
         self._theme_callback = None
         self._vbcable_prompted = False
         self._installer = None
+        self._remote_receiver = None
+        self._remote_control_callback = None
+
+        _url = REMOTE_SERVER_URL.replace("ws://", "").replace("/ws", "")
+        if ":" in _url:
+            _host, _port = _url.rsplit(":", 1)
+        else:
+            _host, _port = _url, "8765"
+        self._remote_host = _host
+        self._remote_port = _port
+        self._remote_token = REMOTE_TOKEN
+
+        self._status_color = "green"
+        self._remote_status_color = ""
+        self._mic_color = "red"
 
         self.setObjectName("SettingsPanel")
         self.setMinimumWidth(0)
@@ -126,6 +142,16 @@ class SettingsPanel(QWidget):
         self._service.set_pitch_getter(lambda: self._pitch_slider.value())
         self._service.set_volume_getter(lambda: self._volume_slider.value() / 100.0)
 
+    def set_remote_receiver(self, receiver):
+        self._remote_receiver = receiver
+        if receiver:
+            receiver.connection_changed.connect(self._on_remote_connection_changed)
+
+    def set_remote_control_callback(self, callback):
+        self._remote_control_callback = callback
+        if callback and self._remote_switch.isChecked():
+            callback(True)
+
     # ── Service 回调 ──
 
     def _register_service_callbacks(self):
@@ -148,19 +174,23 @@ class SettingsPanel(QWidget):
 
     def _on_mic_ok(self):
         self._mic_label.setText("CABLE Input ✅")
+        self._mic_color = "green"
         self._mic_label.setStyleSheet("color: green;")
         self._vbcable_install_btn.hide()
 
     def _update_status(self, text: str, color: str):
         self._status_label.setText(text)
+        self._status_color = color
         self._status_label.setStyleSheet(f"color: {color};")
 
     def _set_mic_error(self):
         if pyaudio is None:
             self._mic_label.setText("pyaudio 未安装")
+            self._mic_color = "orange"
             self._mic_label.setStyleSheet("color: orange;")
         else:
             self._mic_label.setText("未检测到")
+            self._mic_color = "red"
             self._mic_label.setStyleSheet("color: red;")
         self._vbcable_install_btn.show()
 
@@ -365,6 +395,29 @@ class SettingsPanel(QWidget):
         theme_row.addStretch()
         parent.addLayout(theme_row)
 
+        # 远程输入
+        remote_row = QHBoxLayout()
+        remote_row.setSpacing(6)
+        self._remote_switch = SwitchButton()
+        self._remote_switch.setChecked(REMOTE_ENABLED)
+        self._remote_switch.checkedChanged.connect(self._on_remote_toggle)
+        remote_row.addWidget(BodyLabel("远程输入"))
+        remote_row.addWidget(self._remote_switch)
+        self._remote_config_btn = PushButton("配置")
+        self._remote_config_btn.setFixedHeight(28)
+        self._remote_config_btn.clicked.connect(self._show_remote_config_dialog)
+        self._remote_config_btn.hide()
+        remote_row.addWidget(self._remote_config_btn)
+        remote_row.addStretch()
+        parent.addLayout(remote_row)
+
+        self._remote_status_label = BodyLabel("")
+
+        if REMOTE_ENABLED:
+            self._remote_status_label.setText("未连接")
+            self._remote_status_label.setStyleSheet("color: gray;")
+            self._remote_config_btn.show()
+
     # ── 日志 ──
 
     def _build_log_section(self, parent):
@@ -381,11 +434,19 @@ class SettingsPanel(QWidget):
 
     def _build_status_bar(self, parent):
         row = QHBoxLayout()
-        row.setSpacing(8)
+        row.setSpacing(6)
 
         self._status_label = BodyLabel("🟢 就绪")
         self._status_label.setStyleSheet("color: green;")
         row.addWidget(self._status_label)
+
+        self._sep1 = self._make_vsep()
+        row.addWidget(self._sep1)
+
+        row.addWidget(self._remote_status_label)
+
+        self._sep2 = self._make_vsep()
+        row.addWidget(self._sep2)
 
         row.addStretch()
 
@@ -400,6 +461,18 @@ class SettingsPanel(QWidget):
         row.addWidget(self._vbcable_install_btn)
 
         parent.addLayout(row)
+
+        c = "rgba(255,255,255,0.15)" if isDarkTheme() else "rgba(0,0,0,0.12)"
+        for sep in (self._sep1, self._sep2):
+            sep.setStyleSheet(f"QFrame {{ color: {c}; }}")
+
+    @staticmethod
+    def _make_vsep():
+        line = QFrame()
+        line.setFrameShape(QFrame.VLine)
+        line.setFrameShadow(QFrame.Plain)
+        line.setFixedWidth(1)
+        return line
 
     @staticmethod
     def _sep():
@@ -646,6 +719,17 @@ class SettingsPanel(QWidget):
     def set_theme_change_callback(self, callback):
         self._theme_callback = callback
 
+    def _refresh_status_colors(self):
+        self._status_label.setStyleSheet(f"color: {self._status_color};")
+        if self._mic_color:
+            self._mic_label.setStyleSheet(f"color: {self._mic_color};")
+        if self._remote_status_color:
+            self._remote_status_label.setStyleSheet(f"color: {self._remote_status_color};")
+        dark = isDarkTheme()
+        c = "rgba(255,255,255,0.15)" if dark else "rgba(0,0,0,0.12)"
+        for sep in (self._sep1, self._sep2):
+            sep.setStyleSheet(f"QFrame {{ color: {c}; }}")
+
     def _on_theme_toggle(self, checked):
         dark = bool(checked)
         setTheme(Theme.DARK if dark else Theme.LIGHT)
@@ -653,6 +737,7 @@ class SettingsPanel(QWidget):
             self._highlight_engine_btn(self._service.engine_name)
         if self._theme_callback:
             self._theme_callback(dark)
+        self._refresh_status_colors()
 
     def _on_concurrent_toggle(self, checked):
         self._service.concurrent_mode = checked
@@ -660,6 +745,115 @@ class SettingsPanel(QWidget):
     @property
     def concurrent_mode(self):
         return self._concurrent_switch.isChecked()
+
+    @property
+    def remote_server_url(self):
+        return f"ws://{self._remote_host}:{self._remote_port}/ws"
+
+    @property
+    def remote_token(self):
+        return self._remote_token
+
+    def _on_remote_toggle(self, checked):
+        if checked:
+            self._remote_config_btn.show()
+            if self._remote_control_callback:
+                self._remote_control_callback(True)
+        else:
+            if self._remote_receiver:
+                self._remote_receiver.stop()
+            self._remote_config_btn.hide()
+            self._remote_status_label.setText("")
+            if self._remote_control_callback:
+                self._remote_control_callback(False)
+
+    def _on_remote_connection_changed(self, connected):
+        if connected:
+            self._remote_status_label.setText("已连接")
+            self._remote_status_color = "green"
+            self._remote_status_label.setStyleSheet("color: green;")
+        else:
+            if self._remote_switch.isChecked():
+                self._remote_status_label.setText("重连中...")
+                self._remote_status_color = "orange"
+                self._remote_status_label.setStyleSheet("color: orange;")
+            else:
+                self._remote_status_label.setText("")
+                self._remote_status_color = ""
+
+    def _show_remote_config_dialog(self):
+        popup = QFrame(self, Qt.Popup)
+        popup.setObjectName("remoteConfigPopup")
+        popup.setFrameShape(QFrame.StyledPanel)
+        dark = isDarkTheme()
+        bg = "#2d2d2d" if dark else "#ffffff"
+        border = "rgba(255,255,255,0.08)" if dark else "rgba(0,0,0,0.12)"
+        popup.setStyleSheet(
+            f"QFrame#remoteConfigPopup {{ background-color: {bg}; border: 1px solid {border}; border-radius: 8px; }}"
+        )
+
+        layout = QVBoxLayout(popup)
+        layout.setSpacing(8)
+        layout.setContentsMargins(12, 12, 12, 12)
+
+        layout.addWidget(BodyLabel("地址:端口"))
+        addr_edit = LineEdit()
+        addr_edit.setText(f"{self._remote_host}:{self._remote_port}")
+        addr_edit.setFixedWidth(240)
+        layout.addWidget(addr_edit)
+
+        layout.addWidget(BodyLabel("Token"))
+        token_edit = LineEdit()
+        token_edit.setText(self._remote_token)
+        token_edit.setFixedWidth(240)
+        layout.addWidget(token_edit)
+
+        btn_row = QHBoxLayout()
+        cancel_btn = PushButton("取消")
+        save_btn = PushButton("保存")
+        save_cfg_btn = PrimaryPushButton("保存到配置")
+        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(save_btn)
+        btn_row.addWidget(save_cfg_btn)
+        layout.addLayout(btn_row)
+
+        pos = self._remote_config_btn.mapToGlobal(QPoint(0, self._remote_config_btn.height() + 4))
+        popup.move(pos)
+        popup.show()
+
+        def _parse_addr():
+            addr = addr_edit.text().strip()
+            if ":" in addr:
+                h, p = addr.rsplit(":", 1)
+                self._remote_host = h or "127.0.0.1"
+                self._remote_port = p or "8765"
+            else:
+                self._remote_host = addr or "127.0.0.1"
+                self._remote_port = "8765"
+            self._remote_token = token_edit.text().strip()
+
+        def _do_save():
+            _parse_addr()
+            popup.close()
+            if self._remote_switch.isChecked() and self._remote_control_callback:
+                self._remote_control_callback(False)
+                self._remote_control_callback(True)
+
+        def _do_save_config():
+            _parse_addr()
+            popup.close()
+            url = f"ws://{self._remote_host}:{self._remote_port}/ws"
+            if not save_remote_config(url, self._remote_token, self._remote_switch.isChecked()):
+                logger.error("保存远程配置失败")
+            if self._remote_switch.isChecked() and self._remote_control_callback:
+                self._remote_control_callback(False)
+                self._remote_control_callback(True)
+
+        cancel_btn.clicked.connect(popup.close)
+        save_btn.clicked.connect(_do_save)
+        save_cfg_btn.clicked.connect(_do_save_config)
+        addr_edit.returnPressed.connect(_do_save)
+        token_edit.returnPressed.connect(_do_save)
 
     # ── VB-Cable 安装 ──
 
