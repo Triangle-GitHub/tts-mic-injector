@@ -47,3 +47,6 @@ docs/superpowers/
 
 # User config (contains secrets)
 config.json
+
+# External tools
+tools/
