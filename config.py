@@ -173,6 +173,15 @@ def _load_raw_config() -> dict:
 # ── 合并后的最终配置 ──
 _cfg = _deep_merge(_DEFAULTS, _load_raw_config())
 
+# ── 首次运行：自动生成默认 config.json ──
+if not ALIYUN_CONFIG_PATH.exists():
+    try:
+        with open(ALIYUN_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(_cfg, f, indent=4, ensure_ascii=False)
+        logger.info("First run: generated default config.json")
+    except Exception as e:
+        logger.warning(f"Failed to generate default config.json: {e}")
+
 # ============================================================
 #  导出的模块级常量
 # ============================================================

@@ -40,3 +40,10 @@ logs/
 # Environment
 .env
 .env.local
+
+# AI-generated docs and workspace
+docs/superpowers/
+.superpowers/
+
+# User config (contains secrets)
+config.json
