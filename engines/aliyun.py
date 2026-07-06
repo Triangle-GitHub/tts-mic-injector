@@ -29,6 +29,27 @@ except ImportError:
 logger = logging.getLogger("TTSMicInjector")
 
 
+def check_aliyun_available() -> tuple:
+    """Return (available, reason, setup_info)."""
+    reasons = []
+    setup = {"pip": [], "download": [], "need_api_key": False}
+
+    if dashscope is None:
+        reasons.append("缺少 dashscope 包")
+        setup["pip"].append("dashscope")
+
+    import config
+    aliyun_cfg = config.load_aliyun_config()
+    api_key = aliyun_cfg.get("api_key", "") or os.environ.get("DASHSCOPE_API_KEY", "")
+    if not api_key or not api_key.startswith("sk-"):
+        reasons.append("未配置或 API Key 无效")
+        setup["need_api_key"] = True
+
+    if reasons:
+        return False, "；".join(reasons), setup
+    return True, "", {}
+
+
 class _AliyunCallback(QwenTtsRealtimeCallback if QwenTtsRealtimeCallback else object):
     """收集 PCM 数据到文件。"""
 

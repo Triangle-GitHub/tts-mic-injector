@@ -5,6 +5,7 @@ EdgeEngine — Microsoft Edge TTS 云端引擎。
 
 import os
 import sys
+import shutil
 import tempfile
 import subprocess
 import threading
@@ -26,6 +27,38 @@ except ImportError:
     edge_tts = None
 
 logger = logging.getLogger("TTSMicInjector")
+
+
+def check_edge_available() -> tuple:
+    """Return (available, reason, setup_info)."""
+    reasons = []
+    setup = {"pip": [], "download": []}
+    root = os.path.dirname(os.path.dirname(__file__))
+
+    if edge_tts is None:
+        reasons.append("缺少 edge-tts 包")
+        setup["pip"].append("edge-tts")
+
+    ffmpeg_found = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
+    if not ffmpeg_found:
+        for candidate in [
+            os.path.join(root, "tools", "ffmpeg.exe"),
+            os.path.join(root, "ffmpeg.exe"),
+        ]:
+            if os.path.isfile(candidate):
+                ffmpeg_found = True
+                break
+    if not ffmpeg_found:
+        reasons.append("缺少 ffmpeg")
+        setup["download"].append((
+            "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+            "ffmpeg.exe",
+            "bin/ffmpeg.exe",
+        ))
+
+    if reasons:
+        return False, "；".join(reasons), setup
+    return True, "", {}
 
 
 class EdgeEngine(TTSEngine):
@@ -166,9 +199,19 @@ class EdgeEngine(TTSEngine):
         await communicate.save(output_path)
 
     def _mp3_to_wav(self, mp3_path, wav_path):
+        ffmpeg_exe = FFMPEG_PATH
+        if not shutil.which(ffmpeg_exe):
+            root = os.path.dirname(os.path.dirname(__file__))
+            for candidate in [
+                os.path.join(root, "tools", "ffmpeg.exe"),
+                os.path.join(root, "ffmpeg.exe"),
+            ]:
+                if os.path.isfile(candidate):
+                    ffmpeg_exe = candidate
+                    break
         try:
             result = subprocess.run(
-                [FFMPEG_PATH, "-y", "-i", mp3_path,
+                [ffmpeg_exe, "-y", "-i", mp3_path,
                  "-acodec", "pcm_s16le", "-ar", "24000", "-ac", "1",
                  wav_path],
                 capture_output=True,

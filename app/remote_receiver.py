@@ -19,6 +19,15 @@ except ImportError:
 logger = logging.getLogger("TTSMicInjector")
 
 
+def check_remote_available() -> tuple:
+    """Return (available, reason, setup_info)."""
+    if websocket is None:
+        return False, "缺少 websocket-client 包", {
+            "pip": ["websocket-client"], "download": []
+        }
+    return True, "", {}
+
+
 class RemoteReceiver(QObject):
     message_received = pyqtSignal(str)
     connection_changed = pyqtSignal(bool)

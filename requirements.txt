@@ -3,7 +3,7 @@
 
 # ── GUI 框架 ──
 PyQt5>=5.15
-qfluentwidgets>=1.5.0
+PyQt-Fluent-Widgets>=1.5.0
 
 # ── 音频设备 ──
 pyaudio>=0.2.11

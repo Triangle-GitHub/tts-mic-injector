@@ -17,6 +17,50 @@ _CREATION_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
 logger = logging.getLogger("TTSMicInjector")
 
 
+def check_piper_available() -> tuple:
+    """Return (available, reason, setup_info)."""
+    import config
+    exe_name = config.PIPER_PATH
+    model_dir = config.PIPER_MODEL_DIR
+    root = os.path.dirname(os.path.dirname(__file__))
+
+    reasons = []
+    setup = {"pip": [], "download": [], "open_url": None}
+
+    search_paths = [
+        os.path.join(root, "tools", exe_name),
+        os.path.join(root, exe_name),
+    ]
+    for p in os.environ.get("PATH", "").split(os.pathsep):
+        for name in (exe_name, "piper", "piper.exe"):
+            search_paths.append(os.path.join(p, name))
+
+    found_exe = any(os.path.isfile(p) for p in search_paths)
+
+    if not found_exe:
+        reasons.append("缺少 piper.exe")
+        setup["download"].append((
+            "https://github.com/rhasspy/piper/releases/latest/download/piper_windows_amd64.zip",
+            "piper.exe",
+            "piper/piper.exe",
+        ))
+
+    model_path = os.path.join(root, model_dir)
+    if not os.path.isdir(model_path):
+        os.makedirs(model_path, exist_ok=True)
+    has_models = any(
+        f.endswith(".onnx")
+        for f in (os.listdir(model_path) if os.path.isdir(model_path) else [])
+    )
+    if not has_models:
+        reasons.append("缺少 .onnx 模型")
+        setup["open_url"] = "https://huggingface.co/rhasspy/piper-voices"
+
+    if reasons:
+        return False, "；".join(reasons), setup
+    return True, "", {}
+
+
 class PiperEngine(TTSEngine):
     """Piper 本地神经网络 TTS 引擎。"""
     name = "Piper"
@@ -40,12 +84,15 @@ class PiperEngine(TTSEngine):
         logger.info(f"Piper 就绪，exe: {self._exe_path}, 模型: {len(self._models)} 个")
 
     def _find_exe(self):
-        search_paths = [PIPER_PATH]
+        root = os.path.dirname(os.path.dirname(__file__))
+        search_paths = [
+            PIPER_PATH,
+            os.path.join(root, "tools", PIPER_PATH),
+        ]
         for p in os.environ.get("PATH", "").split(os.pathsep):
             for name in (PIPER_PATH, "piper", "piper.exe"):
                 candidate = os.path.join(p, name)
-                if os.path.isfile(candidate):
-                    search_paths.append(candidate)
+                search_paths.append(candidate)
 
         for p in search_paths:
             if os.path.isfile(p):

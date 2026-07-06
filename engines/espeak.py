@@ -17,6 +17,33 @@ _CREATION_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
 logger = logging.getLogger("TTSMicInjector")
 
 
+def check_espeak_available() -> tuple:
+    """Return (available, reason, setup_info)."""
+    import config
+    exe_name = config.ESPEAK_PATH
+    root = os.path.dirname(os.path.dirname(__file__))
+
+    search_paths = [
+        os.path.join(root, "tools", exe_name),
+        os.path.join(root, exe_name),
+    ]
+    for p in os.environ.get("PATH", "").split(os.pathsep):
+        search_paths.append(os.path.join(p, exe_name))
+        search_paths.append(os.path.join(p, "espeak-ng"))
+
+    for p in search_paths:
+        if os.path.isfile(p):
+            return True, "", {}
+
+    return False, "未找到 espeak-ng.exe", {
+        "pip": [], "download": [
+            ("https://github.com/espeak-ng/espeak-ng/releases/download/1.52/espeak-ng-windows-x64.zip",
+             "espeak-ng.exe",
+             None)
+        ]
+    }
+
+
 class EspeakEngine(TTSEngine):
     """eSpeak NG 引擎（最快、最轻量）。"""
     name = "eSpeak"
@@ -25,7 +52,11 @@ class EspeakEngine(TTSEngine):
         self._check_exists()
 
     def _check_exists(self):
-        search_paths = [ESPEAK_PATH]
+        root = os.path.dirname(os.path.dirname(__file__))
+        search_paths = [
+            ESPEAK_PATH,
+            os.path.join(root, "tools", ESPEAK_PATH),
+        ]
         if not os.path.isfile(ESPEAK_PATH):
             for p in os.environ.get("PATH", "").split(os.pathsep):
                 candidate = os.path.join(p, ESPEAK_PATH)

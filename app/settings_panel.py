@@ -34,6 +34,12 @@ from config import (
     save_remote_config, get_engine_default,
 )
 from engines.edge import EdgeEngine
+from engines.edge import check_edge_available
+from engines.aliyun import check_aliyun_available
+from engines.espeak import check_espeak_available
+from engines.piper import check_piper_available
+from app.remote_receiver import check_remote_available
+from app.setup_popup import SetupPopup
 from service.tts_service import TTSService
 from app.log_bridge import LogBridge
 from app.utils import cfg
@@ -48,16 +54,6 @@ try:
     import pythoncom
 except ImportError:
     pythoncom = None
-
-try:
-    import edge_tts
-except ImportError:
-    edge_tts = None
-
-try:
-    import dashscope
-except ImportError:
-    dashscope = None
 
 logger = logging.getLogger("TTSMicInjector")
 
@@ -399,7 +395,8 @@ class SettingsPanel(QWidget):
         remote_row = QHBoxLayout()
         remote_row.setSpacing(6)
         self._remote_switch = SwitchButton()
-        self._remote_switch.setChecked(REMOTE_ENABLED)
+        _remote_avail, _, _ = check_remote_available()
+        self._remote_switch.setChecked(REMOTE_ENABLED and _remote_avail)
         self._remote_switch.checkedChanged.connect(self._on_remote_toggle)
         remote_row.addWidget(BodyLabel("远程输入"))
         remote_row.addWidget(self._remote_switch)
@@ -413,7 +410,7 @@ class SettingsPanel(QWidget):
 
         self._remote_status_label = BodyLabel("")
 
-        if REMOTE_ENABLED:
+        if REMOTE_ENABLED and _remote_avail:
             self._remote_status_label.setText("未连接")
             self._remote_status_label.setStyleSheet("color: gray;")
             self._remote_config_btn.show()
@@ -487,8 +484,16 @@ class SettingsPanel(QWidget):
 
     def _on_engine_switch(self, name: str):
         if name == "Aliyun":
-            if dashscope is None:
-                logger.error("dashscope 未安装。请执行: pip install dashscope")
+            avail, reason, setup_info = check_aliyun_available()
+            if not avail:
+                popup = SetupPopup(
+                    self, "Aliyun 不可用", reason,
+                    pip_packages=setup_info.get("pip", []),
+                    download_items=setup_info.get("download", []),
+                    need_api_key=setup_info.get("need_api_key", False),
+                    on_save_key=self._save_aliyun_key if setup_info.get("need_api_key") else None,
+                )
+                popup.show_near(self._engine_btns["Aliyun"])
                 return
             if not self._service.switch_engine("Aliyun"):
                 return
@@ -499,8 +504,14 @@ class SettingsPanel(QWidget):
             self._speed_label.setText("N/A")
 
         elif name == "Edge":
-            if edge_tts is None:
-                logger.error("edge-tts 未安装。请执行: pip install edge-tts")
+            avail, reason, setup_info = check_edge_available()
+            if not avail:
+                popup = SetupPopup(
+                    self, "Edge 不可用", reason,
+                    pip_packages=setup_info.get("pip", []),
+                    download_items=setup_info.get("download", []),
+                )
+                popup.show_near(self._engine_btns["Edge"])
                 return
             if not self._service.switch_engine("Edge"):
                 return
@@ -521,6 +532,15 @@ class SettingsPanel(QWidget):
             self._update_speed_range("SAPI5", ENGINE_SPEED_RANGES["SAPI5"])
 
         elif name == "eSpeak":
+            avail, reason, setup_info = check_espeak_available()
+            if not avail:
+                popup = SetupPopup(
+                    self, "eSpeak 不可用", reason,
+                    pip_packages=setup_info.get("pip", []),
+                    download_items=setup_info.get("download", []),
+                )
+                popup.show_near(self._engine_btns["eSpeak"])
+                return
             if not self._service.switch_engine("eSpeak"):
                 return
             self._highlight_engine_btn("eSpeak")
@@ -528,6 +548,16 @@ class SettingsPanel(QWidget):
             self._update_speed_range("eSpeak", ENGINE_SPEED_RANGES["eSpeak"])
 
         elif name == "Piper":
+            avail, reason, setup_info = check_piper_available()
+            if not avail:
+                popup = SetupPopup(
+                    self, "Piper 不可用", reason,
+                    pip_packages=setup_info.get("pip", []),
+                    download_items=setup_info.get("download", []),
+                    open_url=setup_info.get("open_url"),
+                )
+                popup.show_near(self._engine_btns["Piper"])
+                return
             if not self._service.switch_engine("Piper"):
                 return
             self._highlight_engine_btn("Piper")
@@ -757,6 +787,18 @@ class SettingsPanel(QWidget):
 
     def _on_remote_toggle(self, checked):
         if checked:
+            avail, reason, setup_info = check_remote_available()
+            if not avail:
+                self._remote_switch.blockSignals(True)
+                self._remote_switch.setChecked(False)
+                self._remote_switch.blockSignals(False)
+                popup = SetupPopup(
+                    self, "远程输入不可用", reason,
+                    pip_packages=setup_info.get("pip", []),
+                    download_items=setup_info.get("download", []),
+                )
+                popup.show_near(self._remote_switch)
+                return
             self._remote_config_btn.show()
             if self._remote_control_callback:
                 self._remote_control_callback(True)
@@ -954,6 +996,25 @@ class SettingsPanel(QWidget):
 
     def _on_install_error(self, error_type: str, message: str):
         logger.error(f"[VB-Cable] {error_type}: {message}")
+
+    def _save_aliyun_key(self, api_key: str) -> bool:
+        import json
+        from config import ALIYUN_CONFIG_PATH
+        try:
+            if ALIYUN_CONFIG_PATH.exists():
+                with open(ALIYUN_CONFIG_PATH, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+            else:
+                cfg = {}
+            cfg.setdefault("aliyun", {})
+            cfg["aliyun"]["api_key"] = api_key
+            with open(ALIYUN_CONFIG_PATH, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=4, ensure_ascii=False)
+            logger.info("Aliyun API Key 已保存")
+            return True
+        except Exception as e:
+            logger.error(f"保存 API Key 失败: {e}")
+            return False
 
     # ── VB-Cable ──
 

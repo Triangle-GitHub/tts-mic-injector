@@ -15,11 +15,6 @@ try:
 except ImportError:
     pyaudio = None
 
-try:
-    import pyttsx3
-except ImportError:
-    pyttsx3 = None
-
 # ── 日志 ──
 logger = logging.getLogger("TTSMicInjector")
 logger.setLevel(logging.DEBUG)
@@ -35,10 +30,6 @@ def main():
         print("请安装依赖:")
         print("  pip install pyaudio")
         print("=" * 50)
-
-    if pyttsx3 is None:
-        print("提示: 安装 pyttsx3 可使用系统 TTS 引擎")
-        print("  pip install pyttsx3")
 
     service = TTSService()
     app = TTSMicInjectorApp(service)
