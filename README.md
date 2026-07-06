@@ -17,16 +17,20 @@
 | 📝 消息历史 | 所有消息保留在聊天列表，点击即可重放 |
 | 🔀 并行播放 | 可选允许多条消息同时播放 |
 | 🌗 深色模式 | 启动跟随系统主题，手动切换实时生效 |
+| 🔧 一键安装 | 点击不可用引擎时弹出安装向导，自动 pip install / 下载外部程序 |
+| 📡 远程输入 | 通过 WebSocket 中继服务器远程发送文本 |
 
 ## 支持的 TTS 引擎
 
 | 引擎 | 类型 | 音色数 | 语速调节 | 需要额外安装 |
 |------|------|--------|----------|-------------|
+| **SAPI5** | Windows 本地 | 系统安装的语音 | ✅ | 内置（无需额外安装） |
 | **Aliyun** | 阿里云 Qwen TTS | 40+ | ❌ | dashscope + API Key |
 | **Edge** | 微软云端 (免费) | 数百种 | ✅ | edge-tts, ffmpeg |
-| **SAPI5** | Windows 本地 | 系统安装的语音 | ✅ | pywin32 |
 | **eSpeak** | 本地开源 | 1 (中文) | ✅ | espeak-ng.exe |
 | **Piper** | 本地神经网络 | 取决于 .onnx 模型 | ✅ | piper.exe + 模型 |
+
+> 点击不满足依赖的引擎会弹出安装向导，自动 pip install 或下载可执行文件到 `tools/` 目录。Aliyun 还可在弹窗中直接填写 API Key 保存到配置文件。
 
 ## 安装
 
@@ -48,26 +52,27 @@
 pip install -r requirements.txt
 ```
 
-或手动安装核心依赖：
+核心依赖会自动安装以下包：
 
-```bash
-pip install PyQt5 qfluentwidgets pyaudio pywin32 edge-tts
+| 包 | 用途 |
+|----|------|
+| `PyQt5` | GUI 框架 |
+| `PyQt-Fluent-Widgets` | Fluent Design 组件库 |
+| `pyaudio` | 音频设备操作 |
+| `pywin32` | Windows COM（SAPI5 引擎） |
 
-# 可选
-pip install dashscope          # 阿里云引擎
-pip install pyttsx3            # 备用系统 TTS
-```
+其他引擎依赖（edge-tts、dashscope、websocket-client）在点击对应引擎时会弹出安装向导一键安装。
 
 #### 3. 安装外部程序（按需）
 
-| 引擎 | 下载地址 |
-|------|---------|
-| eSpeak NG | [github.com/espeak-ng/espeak-ng/releases](https://github.com/espeak-ng/espeak-ng/releases) |
-| Piper | [github.com/rhasspy/piper/releases](https://github.com/rhasspy/piper/releases) |
-| Piper 模型 | [huggingface.co/rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) |
-| ffmpeg | [ffmpeg.org/download.html](https://ffmpeg.org/download.html) |
+| 引擎 | 需要 | 下载地址 |
+|------|------|---------|
+| eSpeak NG | `espeak-ng.exe` | [github.com/espeak-ng/espeak-ng/releases](https://github.com/espeak-ng/espeak-ng/releases) |
+| Piper | `piper.exe` + 模型 | [github.com/rhasspy/piper/releases](https://github.com/rhasspy/piper/releases) |
+| Piper 模型 | `.onnx` 文件 | [huggingface.co/rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) |
+| ffmpeg | `ffmpeg.exe` | [ffmpeg.org/download.html](https://ffmpeg.org/download.html) |
 
-将 `espeak-ng.exe`、`piper.exe`、`ffmpeg.exe` 放入 PATH 或项目根目录，`.onnx` 模型放入 `piper_models/`。
+将可执行文件放入 `tools/` 目录或系统 PATH，`.onnx` 模型放入 `piper_models/`。也可点击引擎按钮通过弹窗自动下载到 `tools/`。
 
 ## 配置
 
@@ -91,6 +96,61 @@ pip install pyttsx3            # 备用系统 TTS
 
 完整配置项见 [config.json](config.json)。所有字段均有硬编码默认值，缺失时自动回退。
 
+## 远程输入
+
+通过 WebSocket 中继服务器，将远程设备（手机、平板等）发送的文字转发到本机 TTS，实现远程语音播报。
+
+### 工作流程
+
+```
+远程设备 --HTTP POST--> 中继服务器 --WebSocket--> 本机 TTS Mic Injector
+```
+
+### 1. 部署中继服务器
+
+在公网服务器上运行 `server.py`：
+
+```bash
+pip install aiohttp
+REMOTE_TOKEN=your-32-char-random-token python server.py
+# 默认监听 8765 端口
+```
+
+也可设置 `PORT` 环境变量指定端口。
+
+### 2. 配置客户端
+
+在右侧面板中打开"远程输入"开关，点击"配置"填写：
+
+| 配置项 | 说明 |
+|--------|------|
+| 地址:端口 | 中继服务器地址，如 `your-server.com:8765` |
+| Token | 与服务端 `REMOTE_TOKEN` 一致 |
+
+或直接编辑 `config.json`：
+
+```json
+{
+    "remote": {
+        "enabled": true,
+        "server_url": "ws://your-server.com:8765/ws",
+        "token": "your-32-char-random-token"
+    }
+}
+```
+
+### 3. 发送消息
+
+向中继服务器发 HTTP POST 请求：
+
+```bash
+curl -X POST "http://your-server.com:8765/api/send?token=your-token" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "你好，这是远程发送的文字"}'
+```
+
+消息自动出现在聊天列表并触发 TTS 播放。单条消息最长 500 字，每个 IP 每分钟限 30 条。
+
 ## 运行
 
 ```bash
@@ -104,12 +164,14 @@ python app.py
 ├── config.json             # 用户配置
 ├── config.py               # 配置加载中心（默认值 + 合并）
 ├── requirements.txt        # Python 依赖清单
+├── server.py               # WebSocket 中继服务器（部署到公网）
 ├── app/                    # UI 层 (PyQt5 + qfluentwidgets)
 │   ├── main_window.py      # 主窗口，QSplitter 可拖拽双栏布局
 │   ├── chat_widget.py      # 左侧聊天气泡面板
 │   ├── message_item.py     # 聊天气泡组件
 │   ├── settings_panel.py   # 右侧控制面板
-│   ├── tts_interface.py    # TTS 交互抽象
+│   ├── setup_popup.py      # 引擎依赖一键安装弹窗
+│   ├── remote_receiver.py  # 远程 WebSocket 消息接收
 │   ├── log_bridge.py       # 日志 → UI 桥接
 │   └── utils/              # QConfig、日志、主题工具
 ├── service/
@@ -126,6 +188,7 @@ python app.py
 │   └── player.py           # PyAudio 播放（VB-Cable + 监听双输出）
 ├── installer/
 │   └── vbcable_installer.py # VB-Cable 一键安装器（下载/安装/检测）
+├── tools/                  # 外部可执行文件存放目录
 ├── ui/                     # 旧版 Tkinter UI（已废弃）
 ├── assets/
 │   ├── icons/
@@ -146,11 +209,12 @@ python build_qt.py
 | 包 | 用途 |
 |----|------|
 | `PyQt5` | GUI 框架 |
-| `qfluentwidgets` | Fluent Design 组件库 |
+| `PyQt-Fluent-Widgets` | Fluent Design 组件库 |
 | `pyaudio` | 音频设备操作 |
-| `pywin32` | Windows COM (SAPI5 引擎) |
-| `edge-tts` | Microsoft Edge TTS |
-| `dashscope` | 阿里云 TTS (可选) |
+| `pywin32` | Windows COM（SAPI5 引擎） |
+| `edge-tts` | Microsoft Edge TTS（可选，一键安装） |
+| `dashscope` | 阿里云 TTS（可选，一键安装） |
+| `websocket-client` | 远程输入（可选，一键安装） |
 
 ## License
 
