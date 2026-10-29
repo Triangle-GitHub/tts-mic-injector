@@ -43,6 +43,12 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("TTSMicInjector")
+    if sys.platform != "win32":
+        # Wayland 下窗口的 app_id 决定 KWin 去关联哪个 .desktop（进而决定任务栏图标与分组）。
+        # 不设的话 Qt 会退化成可执行文件名（python3.15），跟 tts-mic-injector.desktop 对不上，
+        # 任务栏就只能显示通用图标。Windows 上没有这个概念，不动。
+        QApplication.setDesktopFileName("tts-mic-injector")
+
 
     from app.main_window import MainWindow
     window = MainWindow()
