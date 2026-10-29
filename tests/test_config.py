@@ -36,8 +36,12 @@ class TestConstants(unittest.TestCase):
     """验证所有常量值不变。"""
 
     def test_path_constants(self):
-        self.assertEqual(ESPEAK_PATH, "espeak-ng.exe")
-        self.assertEqual(PIPER_PATH, "piper.exe")
+        if sys.platform == "win32":
+            self.assertEqual(ESPEAK_PATH, "espeak-ng.exe")
+            self.assertEqual(PIPER_PATH, "piper.exe")
+        else:
+            self.assertEqual(ESPEAK_PATH, "espeak-ng")
+            self.assertEqual(PIPER_PATH, "piper")
         self.assertEqual(PIPER_MODEL_DIR, "piper_models")
         self.assertEqual(EDGE_DEFAULT_VOICE, "zh-CN-YunxiNeural")
 

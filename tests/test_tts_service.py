@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from audio.device import AudioDevice
 from service.tts_service import TTSService
 
 
@@ -218,60 +219,75 @@ class TestTTSServiceStop(unittest.TestCase):
 class TestTTSServiceDeviceDetection(unittest.TestCase):
     """设备检测。"""
 
-    def test_vb_cable_found(self):
+    def test_virtual_mic_found(self):
         s = TTSService()
         found = []
-        s.on("vb_cable_detected", lambda idx: found.append(idx))
+        s.on("virtual_mic_detected", lambda dev: found.append(dev))
 
-        with patch("service.tts_service.AudioPlayer.find_vb_cable", return_value=7):
-            result = s.detect_vb_cable()
+        dev = AudioDevice(id=7, label="CABLE Input", is_virtual=True)
+        with patch("service.tts_service.AudioPlayer.find_virtual_mic", return_value=dev):
+            result = s.detect_virtual_mic()
             self.assertTrue(result)
-            self.assertEqual(s._vb_device_index, 7)
-            self.assertEqual(found, [7])
+            self.assertEqual(s.mic_device, dev)
+            self.assertEqual(found, [dev])
 
-    def test_vb_cable_not_found(self):
+    def test_virtual_mic_not_found(self):
         s = TTSService()
         errors = []
-        s.on("vb_cable_error", lambda msg: errors.append(msg))
+        s.on("virtual_mic_error", lambda msg: errors.append(msg))
 
-        with patch("service.tts_service.AudioPlayer.find_vb_cable",
+        with patch("service.tts_service.AudioPlayer.find_virtual_mic",
                    side_effect=RuntimeError("not found")):
-            result = s.detect_vb_cable()
+            result = s.detect_virtual_mic()
             self.assertFalse(result)
             self.assertEqual(len(errors), 1)
 
-    def test_pyaudio_not_installed(self):
+    def test_legacy_event_names_still_work(self):
+        """v1 的事件名（vb_cable_*）作为别名必须继续可用。"""
         s = TTSService()
-        errors = []
-        s.on("vb_cable_error", lambda msg: errors.append(msg))
+        found = []
+        s.on("vb_cable_detected", lambda dev: found.append(dev))
 
-        with patch("service.tts_service.pyaudio", None):
-            result = s.detect_vb_cable()
-            self.assertFalse(result)
-            self.assertEqual(errors[0], "pyaudio 未安装")
+        dev = AudioDevice(id=1, label="CABLE Input", is_virtual=True)
+        with patch("service.tts_service.AudioPlayer.find_virtual_mic", return_value=dev):
+            s.detect_virtual_mic()
+        self.assertEqual(found, [dev])
+
+    def test_legacy_detect_vb_cable_alias(self):
+        s = TTSService()
+        dev = AudioDevice(id=1, label="CABLE Input", is_virtual=True)
+        with patch("service.tts_service.AudioPlayer.find_virtual_mic", return_value=dev):
+            self.assertTrue(s.detect_vb_cable())
 
     def test_list_monitor_devices(self):
         s = TTSService()
+        devices = [AudioDevice(id=0, label="Speakers"),
+                   AudioDevice(id=1, label="Headphones")]
         with patch("service.tts_service.AudioPlayer.list_output_devices",
-                   return_value=[(0, "Speakers"), (1, "Headphones")]):
-            devices = s.list_monitor_devices()
-            self.assertEqual(devices, [(0, "Speakers"), (1, "Headphones")])
+                   return_value=devices):
+            self.assertEqual(s.list_monitor_devices(),
+                             [(0, "Speakers"), (1, "Headphones")])
+            self.assertEqual(s.list_output_devices(), devices)
 
-    def test_vb_cable_available_after_detection(self):
+    def test_virtual_mic_available_after_detection(self):
         s = TTSService()
-        self.assertFalse(s.vb_cable_available)
+        self.assertFalse(s.virtual_mic_available)
 
-        with patch("service.tts_service.AudioPlayer.find_vb_cable", return_value=7):
-            s.detect_vb_cable()
-            self.assertTrue(s.vb_cable_available)
+        dev = AudioDevice(id=7, label="CABLE Input", is_virtual=True)
+        with patch("service.tts_service.AudioPlayer.find_virtual_mic", return_value=dev):
+            s.detect_virtual_mic()
+            self.assertTrue(s.virtual_mic_available)
+            self.assertTrue(s.vb_cable_available)      # v1 别名
 
-    def test_vb_cable_not_available_on_error(self):
+    def test_virtual_mic_not_available_on_error(self):
         s = TTSService()
-        with patch("service.tts_service.AudioPlayer.find_vb_cable",
+        with patch("service.tts_service.AudioPlayer.find_virtual_mic",
                    side_effect=RuntimeError("not found")):
-            s.detect_vb_cable()
-            self.assertFalse(s.vb_cable_available)
+            s.detect_virtual_mic()
+            self.assertFalse(s.virtual_mic_available)
+            self.assertIsNone(s.mic_device)
 
+    @unittest.skipUnless(sys.platform == "win32", "VB-Cable 安装只在 Windows 上存在")
     def test_install_vbcable_returns_installer(self):
         s = TTSService()
         with patch("service.tts_service.VBCableInstaller") as mock_installer_class:
@@ -284,12 +300,18 @@ class TestTTSServiceDeviceDetection(unittest.TestCase):
             mock_installer.start.assert_called_once()
             self.assertIsNotNone(result)
 
+    @unittest.skipUnless(sys.platform == "win32", "VB-Cable 安装只在 Windows 上存在")
     def test_install_vbcable_busy_returns_none(self):
         s = TTSService()
         with patch("service.tts_service.VBCableInstaller") as mock_installer_class:
             mock_installer_class.is_busy.return_value = True
             result = s.install_vbcable()
             self.assertIsNone(result)
+
+    def test_install_vbcable_noop_on_linux(self):
+        if sys.platform == "win32":
+            self.skipTest("Windows 上会真的去装 VB-Cable")
+        self.assertIsNone(TTSService().install_vbcable())
 
 
 class TestTTSServiceGetters(unittest.TestCase):
@@ -318,24 +340,23 @@ class TestMonitorDeviceGetter(unittest.TestCase):
     """验证监听设备索引 getter 注入后能被 speak() 正确使用。"""
 
     def test_getter_not_injected_returns_none(self):
-        """未注入 getter 时 monitor_idx 应为 None。"""
+        """未注入 getter 时 speak() 拿不到监听设备，但不该崩。"""
         s = TTSService()
-        self.assertFalse(hasattr(s, "_get_monitor_device_index"))
-        # speak() 中的检查应返回 None（不崩溃）
-        monitor_idx = s._get_monitor_device_index() if hasattr(s, "_get_monitor_device_index") else None
-        self.assertIsNone(monitor_idx)
+        self.assertFalse(hasattr(s, "_get_monitor_device"))
+        monitor_device = s._get_monitor_device() if hasattr(s, "_get_monitor_device") else None
+        self.assertIsNone(monitor_device)
 
     def test_getter_injected_returns_value(self):
-        """注入 getter 后 speak() 应能获取监听设备索引。"""
+        """注入 getter 后 speak() 应能拿到监听设备（AudioDevice）。"""
         s = TTSService()
-        s.set_monitor_device_getter(lambda: 3)
-        self.assertTrue(hasattr(s, "_get_monitor_device_index"))
-        monitor_idx = s._get_monitor_device_index() if hasattr(s, "_get_monitor_device_index") else None
-        self.assertEqual(monitor_idx, 3)
+        dev = AudioDevice(id=3, label="Speaker")
+        s.set_monitor_device_getter(lambda: dev)
+        self.assertTrue(hasattr(s, "_get_monitor_device"))
+        self.assertEqual(s._get_monitor_device(), dev)
 
     def test_getter_returns_none_when_disabled(self):
         """getter 返回 None 时（监听关闭），speak() 中 monitor_idx 为 None。"""
         s = TTSService()
         s.set_monitor_device_getter(lambda: None)
-        monitor_idx = s._get_monitor_device_index() if hasattr(s, "_get_monitor_device_index") else None
-        self.assertIsNone(monitor_idx)
+        monitor_device = s._get_monitor_device() if hasattr(s, "_get_monitor_device") else None
+        self.assertIsNone(monitor_device)
