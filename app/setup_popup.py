@@ -224,10 +224,37 @@ class SetupPopup(QFrame):
 
                     dest = os.path.join(dest_dir, os.path.basename(inner_path) if inner_path else os.path.basename(str(src)))
                     shutil.copy2(str(src), dest)
+                    if sys.platform != "win32" and not dest.endswith((".exe", ".dll")):
+                        os.chmod(dest, 0o755)   # Linux 上二进制得自己给执行位
                     logger.info(f"已安装: {dest}")
             except Exception as e:
                 logger.error(f"解压失败: {e}")
                 return False
+            finally:
+                download_path.unlink(missing_ok=True)
+        elif filename.endswith((".tar.gz", ".tgz", ".tar.xz")):
+            import tarfile
+            try:
+                with tarfile.open(download_path, "r:*") as tf:
+                    tf.extractall(tmp_dir)
+            except Exception as e:
+                logger.error(f"解压失败: {e}")
+                download_path.unlink(missing_ok=True)
+                return False
+            try:
+                src = tmp_dir / inner_path if inner_path else None
+                if src is None or not src.exists():
+                    target = os.path.basename(inner_path) if inner_path else "piper"
+                    hits = [p for p in tmp_dir.rglob(target) if p.is_file()]
+                    if not hits:
+                        logger.error(f"压缩包中未找到: {inner_path or target}")
+                        return False
+                    src = hits[0]
+                dest = os.path.join(dest_dir, src.name)
+                shutil.copy2(str(src), dest)
+                if sys.platform != "win32":
+                    os.chmod(dest, 0o755)
+                logger.info(f"已安装: {dest}")
             finally:
                 download_path.unlink(missing_ok=True)
         else:
@@ -254,10 +281,11 @@ class SetupPopup(QFrame):
     @staticmethod
     def _restart_app():
         if getattr(sys, 'frozen', False):
-            subprocess.Popen(
-                [sys.executable],
-                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
-            )
+            kwargs = {}
+            if sys.platform == "win32":
+                kwargs["creationflags"] = (subprocess.DETACHED_PROCESS
+                                           | subprocess.CREATE_NO_WINDOW)
+            subprocess.Popen([sys.executable], **kwargs)
         else:
             app_dir = Path(__file__).resolve().parent.parent
             app_path = str(app_dir / "app.py")

@@ -5,6 +5,7 @@ SystemTTSEngine — Windows SAPI5 引擎，通过 COM 接口直接调用。
 """
 
 import os
+import sys
 import threading
 import tempfile
 import logging
@@ -29,6 +30,9 @@ class SystemTTSEngine(TTSEngine):
     _RATE_SCALE = 17.5
 
     def __init__(self):
+        if sys.platform != "win32":
+            raise RuntimeError("SAPI5 是 Windows 专属引擎；Linux 请选 eSpeak / Piper / Edge")
+
         if pythoncom is None:
             raise RuntimeError("pythoncom 未安装。请执行: pip install pywin32")
 
