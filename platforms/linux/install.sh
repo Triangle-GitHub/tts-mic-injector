@@ -79,6 +79,21 @@ check() {
         warn "桌面入口未装：$DESKTOP"
     fi
 
+    if [ -f "$HOME/.local/share/icons/hicolor/index.theme" ]; then
+        ok "图标主题索引在（index.theme；缺了它启动器只会显示通用图标）"
+    else
+        bad "缺 ~/.local/share/icons/hicolor/index.theme —— 启动器会显示通用图标"
+        failed=1
+    fi
+
+    hits=$(ls "$HOME"/.local/share/icons/hicolor/*/apps/tts-mic-injector.* 2>/dev/null | wc -l)
+    if [ "$hits" -gt 0 ]; then
+        ok "图标文件 $hits 份（含多尺寸位图）"
+    else
+        bad "找不到 tts-mic-injector 图标文件"
+        failed=1
+    fi
+
     return $failed
 }
 
@@ -136,9 +151,46 @@ WRAPPER
     ok "启动器：$BIN"
 
     # 4) 图标
+    #  ⚠️ ~/.local/share/icons/hicolor 里只有图标、没有 index.theme 时，KDE/GTK 会把这个
+    #     目录当成无效主题，图标查找静默失败 —— 表现就是「启动器里只有通用图标」。
+    HICOLOR="$HOME/.local/share/icons/hicolor"
+    mkdir -p "$HICOLOR"
+    if [ ! -f "$HICOLOR/index.theme" ]; then
+        if [ -f /usr/share/icons/hicolor/index.theme ]; then
+            install -m 644 /usr/share/icons/hicolor/index.theme "$HICOLOR/index.theme"
+            ok "补上 index.theme（之前缺，图标会被静默忽略）"
+        else
+            warn "系统里找不到 /usr/share/icons/hicolor/index.theme，图标可能仍显示不出来"
+        fi
+    else
+        ok "index.theme 已存在"
+    fi
+
     mkdir -p "$ICON_DIR"
     install -m 644 "$SCRIPT_DIR/tts-mic-injector.svg" "$ICON"
-    ok "图标：$ICON"
+    ok "图标（矢量）：$ICON"
+
+    # 位图尺寸：菜单小图标更锐利，也照顾只读固定尺寸的实现
+    png_tool=""
+    have rsvg-convert && png_tool=rsvg
+    [ -z "$png_tool" ] && have magick && png_tool=magick
+    [ -z "$png_tool" ] && have convert && png_tool=convert
+    if [ -n "$png_tool" ]; then
+        for s in 16 24 32 48 64 128 256 512; do
+            mkdir -p "$HICOLOR/${s}x${s}/apps"
+            case "$png_tool" in
+                rsvg)  rsvg-convert -w "$s" -h "$s" "$SCRIPT_DIR/tts-mic-injector.svg" \
+                           -o "$HICOLOR/${s}x${s}/apps/tts-mic-injector.png" ;;
+                magick) magick -background none -density 1024 "$SCRIPT_DIR/tts-mic-injector.svg" \
+                           -resize "${s}x${s}" "$HICOLOR/${s}x${s}/apps/tts-mic-injector.png" ;;
+                convert) convert -background none -density 1024 "$SCRIPT_DIR/tts-mic-injector.svg" \
+                           -resize "${s}x${s}" "$HICOLOR/${s}x${s}/apps/tts-mic-injector.png" ;;
+            esac
+        done
+        ok "图标（位图）：16/24/32/48/64/128/256/512 共 8 份（$png_tool）"
+    else
+        warn "没有 rsvg-convert / magick，只装矢量图标（通常够用）"
+    fi
 
     # 5) .desktop
     mkdir -p "$DESKTOP_DIR"
@@ -180,6 +232,11 @@ uninstall_all() {
     rm -f "$DESKTOP" && ok "已删 $DESKTOP"
     rm -f "$BIN" && ok "已删 $BIN"
     rm -f "$ICON" && ok "已删 $ICON"
+    for s in 16 24 32 48 64 128 256 512; do
+        rm -f "$HOME/.local/share/icons/hicolor/${s}x${s}/apps/tts-mic-injector.png"
+    done
+    ok "已删各尺寸位图图标"
+    info "index.theme 保留（删掉会连累其它程序找图标）"
     if [ -f "$PW_CONF" ]; then
         rm -f "$PW_CONF" && ok "已删 $PW_CONF"
         systemctl --user restart pipewire pipewire-pulse wireplumber 2>/dev/null || \

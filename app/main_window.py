@@ -290,6 +290,14 @@ class MainWindow(MSFluentWindow):
         abs_path = os.path.normpath(_ICON_PATH)
         color = QColor(255, 255, 255) if dark else QColor(60, 60, 60)
         icon_size = int(32 * ratio)
+        # 非 Windows：优先用图标主题里的同名图标（与 .desktop 的 Icon= 同一张），
+        # 这样任务栏 / 窗口切换器看到的和启动器一致；主题里找不到再回退到仓库 SVG。
+        if sys.platform != "win32":
+            theme_icon = QIcon.fromTheme("tts-mic-injector")
+            if not theme_icon.isNull():
+                self.setWindowIcon(theme_icon)
+                return
+
         if os.path.exists(abs_path):
             icon = QIcon(_render_svg(abs_path, icon_size, color))
         else:
@@ -307,13 +315,7 @@ class MainWindow(MSFluentWindow):
             pm = _paint_mic_pixmap(int(24 * ratio), dark)
         pm.setDevicePixelRatio(ratio)
         self.titleBar.iconLabel.setPixmap(pm)
-        icon_size = int(32 * ratio)
-        if os.path.exists(abs_path):
-            icon = QIcon(_render_svg(abs_path, icon_size, color))
-        else:
-            icon = QIcon(_paint_mic_pixmap(icon_size, dark))
-        self.setWindowIcon(icon)
-
+        self._set_window_icon()
     def closeEvent(self, event):
         self._chat.stop()
         if self._remote:
