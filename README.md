@@ -58,8 +58,8 @@ pip install -r requirements.txt
 |----|------|
 | `PyQt5` | GUI 框架 |
 | `PyQt-Fluent-Widgets` | Fluent Design 组件库 |
-| `pyaudio` | 音频设备操作 |
-| `pywin32` | Windows COM（SAPI5 引擎） |
+| `pyaudio` | 音频设备操作（仅 Windows） |
+| `pywin32` | Windows COM（SAPI5 引擎，仅 Windows） |
 
 其他引擎依赖（edge-tts、dashscope、websocket-client）在点击对应引擎时会弹出安装向导一键安装。
 
@@ -185,7 +185,13 @@ python app.py
 │   ├── espeak.py           # eSpeak NG
 │   └── piper.py            # Piper 神经网络
 ├── audio/
-│   └── player.py           # PyAudio 播放（VB-Cable + 监听双输出）
+│   ├── __init__.py         # 按平台选后端（Windows: pyaudio / 其他: pacat）
+│   ├── device.py           # AudioDevice —— 两端共用的设备值对象
+│   ├── pcm.py              # 降混 / 音量（两端共用纯函数）
+│   ├── player.py           # Windows: PyAudio 播放（VB-Cable + 监听双输出）
+│   └── linux_audio.py      # Linux: pacat 播放（PipeWire 虚拟麦克风 + 监听双输出）
+├── platforms/
+│   └── linux/              # PipeWire drop-in + install.sh + launch.sh + 图标
 ├── installer/
 │   └── vbcable_installer.py # VB-Cable 一键安装器（下载/安装/检测）
 ├── tools/                  # 外部可执行文件存放目录
@@ -210,11 +216,100 @@ python build_qt.py
 |----|------|
 | `PyQt5` | GUI 框架 |
 | `PyQt-Fluent-Widgets` | Fluent Design 组件库 |
-| `pyaudio` | 音频设备操作 |
-| `pywin32` | Windows COM（SAPI5 引擎） |
+| `pyaudio` | 音频设备操作（仅 Windows） |
+| `pywin32` | Windows COM（SAPI5 引擎，仅 Windows） |
 | `edge-tts` | Microsoft Edge TTS（可选，一键安装） |
 | `dashscope` | 阿里云 TTS（可选，一键安装） |
 | `websocket-client` | 远程输入（可选，一键安装） |
+
+## Linux（Fedora / PipeWire）
+
+Linux 上没有 VB-Cable，虚拟麦克风改用 **PipeWire 的 loopback** 实现，播放走 `pacat`。
+Windows 侧行为完全不变（`audio/player.py` 仍走 pyaudio + VB-Cable）。
+
+### 一键安装
+
+```bash
+git clone https://github.com/Triangle-GitHub/tts-mic-injector && cd tts-mic-injector
+bash platforms/linux/install.sh          # 幂等；只写用户级文件，不需要 sudo
+bash platforms/linux/install.sh --check  # 只体检
+bash platforms/linux/install.sh --uninstall
+```
+
+它做四件事：
+
+| 装什么 | 装到哪 |
+|---|---|
+| 虚拟麦克风 drop-in（`platforms/linux/51-tts-mic.conf`） | `~/.config/pipewire/pipewire.conf.d/51-tts-mic.conf` |
+| venv（`PyQt5` / `PyQt-Fluent-Widgets` / `edge-tts`） | `<repo>/.venv` |
+| 启动器（指向 `platforms/linux/launch.sh`） | `~/.local/libexec/tts-mic-injector` |
+| 桌面入口 + 图标 | `~/.local/share/applications/tts-mic-injector.desktop`、`~/.local/share/icons/…` |
+
+装完后：应用菜单里打开「TTS 虚拟麦克风」，然后在目标程序（浏览器 / Discord /
+Element / OBS）里把麦克风选成 **TTS Mic**。
+
+判据：
+
+```bash
+pactl list short sources | grep ttsmic_src        # 虚拟麦克风 source 在
+bash platforms/linux/install.sh --check           # 六项体检
+```
+
+### 虚拟麦克风是怎么搭的
+
+一条常驻 null sink + 一条 loopback：
+
+```
+应用 → ttsmic_out (Audio/Sink) → monitor → loopback → ttsmic_src (Audio/Source) → 通话软件
+```
+
+关键是 `capture.props` 里的 **`stream.capture.sink = true`**：没有它，capture 流不会去
+抓目标 sink 的 monitor，设备建得出来、`pactl` 也看得见，但 `ttsmic_src` 上一条 link
+都没有，录回来是静音。
+
+没有那份 drop-in 配置时，程序会退化成现场 `pactl load-module`（`module-null-sink` +
+`module-remap-source`）造一对——能跑，但显示名会被 pipewire 的 modargs 截断成 `TTS`。
+
+### 依赖
+
+- 系统包：`pulseaudio-utils`（`pactl` / `pacat`）、`espeak-ng`（Fedora 默认已装）、
+  可选 `ffmpeg`（Edge 引擎转码要用）
+- pip：`PyQt5`、`PyQt-Fluent-Widgets`；`pyaudio` / `pywin32` 在 Linux 上**不需要**
+  （`requirements.txt` 已按平台标记）
+
+### 引擎差异
+
+| 引擎 | Linux |
+|---|---|
+| eSpeak | ✅ **默认**，直接调用系统 `espeak-ng`（离线） |
+| Edge / Aliyun | ✅ 云端，跨平台 |
+| Piper | ⚠️ 一键安装会下 Linux 版二进制（tar.gz，自动解包 + 给执行位）；`.onnx` 模型仍需自己选 |
+| SAPI5 | ❌ Windows 专属，Linux 上引擎按钮直接不显示 |
+
+### 代码结构（为什么这里是跨平台的）
+
+```
+audio/
+├── __init__.py        # 唯一一处按平台选择后端，并导出平台无关的小工具
+├── device.py          # AudioDevice(id, label, is_virtual) —— 两端共用的设备值对象
+├── pcm.py             # 降混 / 逐 chunk 音量，两端共用的纯函数
+├── player.py          # Windows: pyaudio + VB-Cable
+└── linux_audio.py     # Linux: pacat + PipeWire 虚拟麦克风
+```
+
+两个后端暴露同一套接口（`find_virtual_mic()` / `list_output_devices()` /
+`play(..., monitor_device=...)` / `stop()`），`service/` 及以上**没有任何平台判断**。
+设备标识在 Windows 上是整数下标、在 Linux 上是 sink 名，统一由 `AudioDevice` 包住，
+所以不存在「枚举顺序变了、下标漂了」的问题。
+
+### 已知坑
+
+- **别用 `paplay`**：实测 `paplay` 对着 pipewire-pulse 播出来是静音的（同一个 WAV
+  文件，`pacat` peak 12000 / `paplay` peak 341）。播放一律走 `pacat` 流式 PCM——
+  这也顺带保住了「逐 chunk 调音量」和「ESC 立即停止」。
+- 监听设备列表会排除虚拟麦克风自身，避免把麦克风再喂回麦克风。
+- 重启 `pipewire`/`pipewire-pulse`/`wireplumber` 会让 drop-in 生效，会打断正在播放的
+  声音几秒；`install.sh` 只在配置有变化时才重启。
 
 ## License
 
