@@ -42,6 +42,9 @@ ALIYUN_CONFIG_PATH = _get_app_dir() / "config.json"
 
 logger = logging.getLogger("TTSMicInjector")
 
+# Windows 专用路径（.exe）与非 Windows 的名字差别只在这里收口
+_IS_WIN = sys.platform == "win32"
+
 # ── 硬编码默认值（config.json 中缺失的字段会回退至此） ──
 _DEFAULTS = {
     "aliyun": {
@@ -50,13 +53,18 @@ _DEFAULTS = {
         "voice": "Ethan",
     },
     "paths": {
-        "espeak": "espeak-ng.exe",
-        "piper": "piper.exe",
+        "espeak": "espeak-ng.exe" if _IS_WIN else "espeak-ng",
+        "piper": "piper.exe" if _IS_WIN else "piper",
         "piper_models": "piper_models",
         "ffmpeg": "ffmpeg",
     },
     "vb_cable": {
         "keywords": ["CABLE Input"],
+    },
+    "virtual_mic": {
+        "sink": "ttsmic_out",
+        "source": "ttsmic_src",
+        "description": "TTS Mic",
     },
     "edge": {
         "default_voice": "zh-CN-YunxiNeural",
@@ -204,6 +212,11 @@ FFMPEG_PATH = _cfg["paths"]["ffmpeg"]
 
 # ── VB-Cable ──
 VB_CABLE_KEYWORDS = _cfg["vb_cable"]["keywords"]
+
+# ── 虚拟麦克风（Linux 侧替代 VB-Cable） ──
+VIRTUAL_MIC_SINK = _cfg["virtual_mic"]["sink"]
+VIRTUAL_MIC_SOURCE = _cfg["virtual_mic"]["source"]
+VIRTUAL_MIC_DESC = _cfg["virtual_mic"]["description"]
 
 # ── Edge ──
 EDGE_DEFAULT_VOICE = _cfg["edge"]["default_voice"]

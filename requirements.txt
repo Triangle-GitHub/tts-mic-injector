@@ -5,11 +5,13 @@
 PyQt5>=5.15
 PyQt-Fluent-Widgets>=1.5.0
 
-# ── 音频设备 ──
-pyaudio>=0.2.11
+# ── 音频输出 ──
+# Windows 走 pyaudio + VB-Cable；Linux 走系统自带的 pacat/pactl（pulseaudio-utils），
+# 不需要任何 pip 包，所以这里按平台标记。
+pyaudio>=0.2.11; sys_platform == "win32"
 
-# ── Windows COM（SAPI5 引擎，必装） ──
-pywin32>=300
+# ── Windows COM（SAPI5 引擎，仅 Windows） ──
+pywin32>=300; sys_platform == "win32"
 
 # ── TTS 引擎（按需） ──
 # edge-tts>=6.1.0

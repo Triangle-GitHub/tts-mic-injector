@@ -1,13 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-AudioPlayer — 管理音频播放到 VB-Cable 和可选的监听设备。
+AudioPlayer — Windows 侧播放器：pyaudio + VB-Cable 虚拟声卡。
+
+本文件只在 Windows 上被 audio/__init__.py 选中；Linux 侧对应实现是
+audio/linux_audio.py。两者暴露同一套接口：
+
+    AudioPlayer(device=AudioDevice(...))
+    AudioPlayer.find_virtual_mic()      -> AudioDevice
+    AudioPlayer.list_output_devices()   -> [AudioDevice, ...]
+    AudioPlayer.play(wav_path, stop_event, monitor=..., monitor_device=AudioDevice(...))
+
+设备标识在 Windows 上是 pyaudio 的 output_device_index（整数），但对外统一包成
+AudioDevice，上层不需要知道这个差别。
 """
 
-import wave
-import struct
-import threading
 import logging
+import threading
+import wave
 
+from audio.device import AudioDevice
+from audio.pcm import downmix_mono, scale_volume
 from config import VB_CABLE_KEYWORDS
 
 try:
@@ -21,16 +33,22 @@ logger = logging.getLogger("TTSMicInjector")
 class AudioPlayer:
     """管理音频播放到 VB-Cable 和可选的监听设备。"""
 
-    def __init__(self, vb_device_index: int = None):
+    def __init__(self, device: AudioDevice = None, vb_device_index: int = None):
         self._stream = None
         self._monitor_stream = None
         self._pyaudio = None
         self._playing = False
-        self._vb_device_index = vb_device_index
+        # vb_device_index 是 v1 的旧接口，等价于 device.id
+        self._device = device
+        if self._device is None and vb_device_index is not None:
+            self._device = AudioDevice(id=vb_device_index, label="VB-Cable",
+                                       is_virtual=True)
+
+    # ── 设备发现 ──
 
     @staticmethod
-    def find_vb_cable() -> int:
-        """查找 VB-Cable 输出设备（CABLE Input）并返回索引。"""
+    def find_virtual_mic() -> AudioDevice:
+        """查找 VB-Cable 虚拟麦克风（CABLE Input）并返回它。"""
         if pyaudio is None:
             raise RuntimeError("pyaudio 未安装。请执行: pip install pyaudio")
 
@@ -44,7 +62,7 @@ class AudioPlayer:
                 for kw in VB_CABLE_KEYWORDS:
                     if kw.lower() in name.lower():
                         logger.info(f"找到虚拟麦克风输出设备: [{i}] {name}")
-                        return i
+                        return AudioDevice(id=i, label=name, is_virtual=True)
             raise RuntimeError(
                 "未检测到 VB-Cable 虚拟麦克风输出设备（CABLE Input）。\n"
                 "请从 https://vb-audio.com/Cable/ 下载安装，\n"
@@ -55,7 +73,7 @@ class AudioPlayer:
 
     @staticmethod
     def list_output_devices() -> list:
-        """返回所有输出设备列表 [(index, name), ...]."""
+        """返回所有输出设备 [AudioDevice, ...]。"""
         if pyaudio is None:
             return []
         p = pyaudio.PyAudio()
@@ -64,23 +82,54 @@ class AudioPlayer:
             for i in range(p.get_device_count()):
                 info = p.get_device_info_by_index(i)
                 if info["maxOutputChannels"] > 0:
-                    devices.append((i, info["name"]))
+                    devices.append(AudioDevice(id=i, label=info["name"]))
             return devices
         finally:
             p.terminate()
 
+    @staticmethod
+    def default_output_device() -> AudioDevice:
+        """系统默认输出设备（监听默认目标）。"""
+        if pyaudio is None:
+            return None
+        p = pyaudio.PyAudio()
+        try:
+            info = p.get_default_output_device_info()
+            return AudioDevice(id=info["index"], label=info["name"])
+        except Exception:
+            return None
+        finally:
+            p.terminate()
+
+    @staticmethod
+    def virtual_source_name() -> str:
+        """Windows 上虚拟麦克风的『源』是 VB-Cable 驱动，没有可选的 source 名。"""
+        return "CABLE Output"
+
+    @staticmethod
+    def virtual_source_desc() -> str:
+        return "CABLE Output"
+
+    # ── 播放 ──
+
     def play(self, wav_path: str, stop_event: threading.Event,
-             monitor: bool = False, monitor_device_index: int = None,
+             monitor: bool = False, monitor_device: AudioDevice = None,
              volume_getter=None) -> bool:
         """播放 WAV 文件到 VB-Cable，可选同时输出到监听设备。
-        
-        当 VB-Cable 不可用（_vb_device_index 为 None）时，
-        仍可通过监听设备播放，实现"仅监听"模式。
-        
+
+        当 VB-Cable 不可用（device 为 None）时，仍可通过监听设备播放，
+        实现"仅监听"模式。
+
         返回 True 表示播放完成，False 表示被中断。
         """
         if pyaudio is None:
             raise RuntimeError("pyaudio 未安装")
+
+        vb_index = self._device.id if self._device is not None else None
+        monitor_index = None
+        if monitor:
+            monitor_device = monitor_device or self.default_output_device()
+            monitor_index = monitor_device.id if monitor_device is not None else None
 
         self._playing = True
         try:
@@ -94,14 +143,14 @@ class AudioPlayer:
 
             # ── VB-Cable 输出流（可选） ──
             need_downmix = False
-            if self._vb_device_index is not None:
+            if vb_index is not None:
                 try:
                     self._stream = p.open(
                         format=audio_format,
                         channels=nchannels,
                         rate=framerate,
                         output=True,
-                        output_device_index=self._vb_device_index,
+                        output_device_index=vb_index,
                         frames_per_buffer=1024,
                     )
                 except OSError:
@@ -112,7 +161,7 @@ class AudioPlayer:
                             channels=1,
                             rate=framerate,
                             output=True,
-                            output_device_index=self._vb_device_index,
+                            output_device_index=vb_index,
                             frames_per_buffer=1024,
                         )
                         need_downmix = True
@@ -132,8 +181,8 @@ class AudioPlayer:
                         output=True,
                         frames_per_buffer=1024,
                     )
-                    if monitor_device_index is not None:
-                        kwargs["output_device_index"] = monitor_device_index
+                    if monitor_index is not None:
+                        kwargs["output_device_index"] = monitor_index
                     self._monitor_stream = p.open(**kwargs)
                     logger.info("监听已启用")
                 except Exception as e:
@@ -145,12 +194,11 @@ class AudioPlayer:
             data = wf.readframes(chunk)
             while data and not stop_event.is_set():
                 if volume_getter:
-                    vol = volume_getter()
-                    if abs(vol - 1.0) > 0.01:
-                        data = self._adjust_chunk_volume(data, sampwidth, vol)
+                    data = scale_volume(data, sampwidth, volume_getter())
 
                 # VB-Cable 输出：需要时降混为单声道
-                cable_data = self._downmix(data, sampwidth, nchannels) if need_downmix and nchannels > 1 else data
+                cable_data = (downmix_mono(data, sampwidth, nchannels)
+                              if need_downmix and nchannels > 1 else data)
 
                 if self._stream:
                     self._stream.write(cable_data)
@@ -162,46 +210,10 @@ class AudioPlayer:
                 data = wf.readframes(chunk)
 
             completed = not stop_event.is_set()
+            wf.close()
             return completed
         finally:
             self._cleanup()
-
-    def _downmix(self, data: bytes, sampwidth: int, nchannels: int) -> bytes:
-        """将多声道 PCM 数据降混为单声道。"""
-        if nchannels == 2 and sampwidth == 2:
-            n = len(data) // 4 * 2
-            result = bytearray(n)
-            for i in range(0, len(data), 4):
-                ls = struct.unpack("<h", data[i:i + 2])[0]
-                rs = struct.unpack("<h", data[i + 2:i + 4])[0]
-                mono = (ls + rs) // 2
-                struct.pack_into("<h", result, i // 2, mono)
-            return bytes(result)
-        frame_size = sampwidth * nchannels
-        result = bytearray()
-        for i in range(0, len(data), frame_size):
-            total = 0
-            for ch in range(nchannels):
-                chunk_data = data[i + ch * sampwidth:i + (ch + 1) * sampwidth]
-                sample = int.from_bytes(chunk_data, 'little', signed=True)
-                total += sample
-            mono = total // nchannels
-            result.extend(mono.to_bytes(sampwidth, 'little', signed=True))
-        return bytes(result)
-
-    @staticmethod
-    def _adjust_chunk_volume(data: bytes, sampwidth: int, factor: float) -> bytes:
-        """实时调整 PCM chunk 音量（16-bit）。"""
-        if sampwidth != 2:
-            return data
-        count = len(data) // 2
-        result = bytearray(len(data))
-        for i in range(count):
-            sample = struct.unpack_from("<h", data, i * 2)[0]
-            val = int(sample * factor)
-            val = max(-32768, min(32767, val))
-            struct.pack_into("<h", result, i * 2, val)
-        return bytes(result)
 
     def stop(self):
         """立即停止播放。"""
@@ -230,13 +242,25 @@ class AudioPlayer:
                 pass
             self._pyaudio = None
 
+    # ── 属性 ──
+
+    @property
+    def device(self):
+        return self._device
+
+    @device.setter
+    def device(self, value):
+        self._device = value
+
     @property
     def vb_device_index(self):
-        return self._vb_device_index
+        """v1 旧接口：等价于 device.id。"""
+        return self._device.id if self._device is not None else None
 
     @vb_device_index.setter
     def vb_device_index(self, value):
-        self._vb_device_index = value
+        self._device = (AudioDevice(id=value, label="VB-Cable", is_virtual=True)
+                        if value is not None else None)
 
     @property
     def is_playing(self):

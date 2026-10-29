@@ -66,6 +66,13 @@ class _VolumeSlider(Slider):
         painter.setPen(QPen(c, 1))
         painter.drawLine(QPointF(mid, r - 6), QPointF(mid, r + 6))
 
+# Windows 侧默认 SAPI5（系统自带语音）；其他平台默认 eSpeak（本地、离线、无需安装）
+_IS_WIN = sys.platform == "win32"
+DEFAULT_ENGINE = "SAPI5" if _IS_WIN else "eSpeak"
+ENGINE_NAMES = (
+    ["Aliyun", "Edge", "SAPI5", "eSpeak", "Piper"] if _IS_WIN
+    else ["Aliyun", "Edge", "eSpeak", "Piper"]
+)
 
 class SettingsPanel(QWidget):
     """右侧设置面板。"""
@@ -94,6 +101,8 @@ class SettingsPanel(QWidget):
         self._remote_port = _port
         self._remote_token = REMOTE_TOKEN
 
+        self._mic_device = None
+
         self._status_color = "green"
         self._remote_status_color = ""
         self._mic_color = "red"
@@ -114,7 +123,7 @@ class SettingsPanel(QWidget):
         self._init_engine()
 
         QTimer.singleShot(200, self._populate_monitor_devices)
-        QTimer.singleShot(300, self._check_vb_cable)
+        QTimer.singleShot(300, self._check_virtual_mic)
 
     # ── 公开属性（MainWindow 读取当前值） ──
 
@@ -134,7 +143,7 @@ class SettingsPanel(QWidget):
 
     def _inject_service_getters(self):
         self._service.set_monitor_state_getter(lambda: self._monitor_switch.isChecked())
-        self._service.set_monitor_device_getter(self._get_monitor_device_index)
+        self._service.set_monitor_device_getter(self._get_monitor_device)
         self._service.set_pitch_getter(lambda: self._pitch_slider.value())
         self._service.set_volume_getter(lambda: self._volume_slider.value() / 100.0)
 
@@ -153,8 +162,8 @@ class SettingsPanel(QWidget):
     def _register_service_callbacks(self):
         self._service.on("status", self._on_service_status)
         self._service.on("engine_ready", self._on_service_engine_ready)
-        self._service.on("vb_cable_detected", self._on_vb_cable_detected)
-        self._service.on("vb_cable_error", self._on_vb_cable_error)
+        self._service.on("virtual_mic_detected", self._on_virtual_mic_detected)
+        self._service.on("virtual_mic_error", self._on_virtual_mic_error)
 
     def _on_service_status(self, text, color):
         self._sig_status.emit(text, color)
@@ -162,14 +171,18 @@ class SettingsPanel(QWidget):
     def _on_service_engine_ready(self, name):
         pass
 
-    def _on_vb_cable_detected(self, idx):
+    def _on_virtual_mic_detected(self, device):
+        self._mic_device = device
         self._sig_mic_ok.emit()
 
-    def _on_vb_cable_error(self, msg):
+    def _on_virtual_mic_error(self, msg):
+        self._mic_device = None
         self._sig_mic_err.emit()
 
     def _on_mic_ok(self):
-        self._mic_label.setText("CABLE Input ✅")
+        device = getattr(self, "_mic_device", None)
+        label = device.label if device else ("CABLE Input" if _IS_WIN else "TTS Mic")
+        self._mic_label.setText(f"{label} ✅")
         self._mic_color = "green"
         self._mic_label.setStyleSheet("color: green;")
         self._vbcable_install_btn.hide()
@@ -180,6 +193,15 @@ class SettingsPanel(QWidget):
         self._status_label.setStyleSheet(f"color: {color};")
 
     def _set_mic_error(self):
+        if not _IS_WIN:
+            # Linux 侧没有 VB-Cable 可装，也不走 pyaudio；把原因说清楚就行
+            self._mic_label.setText("虚拟麦克风未就绪")
+            self._mic_color = "red"
+            self._mic_label.setStyleSheet("color: red;")
+            self._vbcable_install_btn.hide()
+            logger.warning("虚拟麦克风不可用；请确认 PipeWire 正常且 pactl/pacat 存在")
+            return
+
         if pyaudio is None:
             self._mic_label.setText("pyaudio 未安装")
             self._mic_color = "orange"
@@ -198,14 +220,15 @@ class SettingsPanel(QWidget):
     # ── 初始化引擎 ──
 
     def _init_engine(self):
-        success = self._service.start_engine("SAPI5")
+        name = DEFAULT_ENGINE
+        success = self._service.start_engine(name)
         if success:
             logger.info(f"引擎就绪: {self._service.engine.name}")
-            self._highlight_engine_btn("SAPI5")
-            self._show_engine_settings("SAPI5")
+            self._highlight_engine_btn(name)
+            self._show_engine_settings(name)
             self._populate_voice_combo()
         else:
-            logger.error("SAPI5 初始化失败")
+            logger.error(f"{name} 初始化失败")
 
     # ── 构建 UI ──
 
@@ -232,7 +255,7 @@ class SettingsPanel(QWidget):
         row.setSpacing(4)
         self._engine_btns = {}
 
-        for name in ["Aliyun", "Edge", "SAPI5", "eSpeak", "Piper"]:
+        for name in ENGINE_NAMES:
             btn = PushButton(name)
             btn.setFixedHeight(30)
             btn.setCursor(Qt.PointingHandCursor)
@@ -723,8 +746,8 @@ class SettingsPanel(QWidget):
 
     def _populate_monitor_devices(self):
         old_name = self._monitor_combo.text()
-        devices = self._service.list_monitor_devices()
-        self._monitor_devices = {name: idx for idx, name in devices}
+        devices = self._service.list_output_devices()
+        self._monitor_devices = {d.label: d for d in devices}
         self._monitor_combo.clear()
         self._monitor_combo.addItems(list(self._monitor_devices.keys()))
 
@@ -735,17 +758,17 @@ class SettingsPanel(QWidget):
 
         # 旧选择已消失，优先选非 CABLE 设备
         for name in self._monitor_devices:
-            if "CABLE" not in name.upper():
+            if "CABLE" not in name.upper() and "TTS MIC" not in name.upper():
                 self._monitor_combo.setText(name)
                 return
         if self._monitor_devices:
             self._monitor_combo.setCurrentIndex(0)
 
-    def _get_monitor_device_index(self):
+    def _get_monitor_device(self):
+        """当前选中的监听设备（AudioDevice）；未开启监听时返回 None。"""
         if not self._monitor_switch.isChecked():
             return None
-        name = self._monitor_combo.text()
-        return self._monitor_devices.get(name)
+        return self._monitor_devices.get(self._monitor_combo.text())
 
     def set_theme_change_callback(self, callback):
         self._theme_callback = callback
@@ -1016,10 +1039,10 @@ class SettingsPanel(QWidget):
             logger.error(f"保存 API Key 失败: {e}")
             return False
 
-    # ── VB-Cable ──
+    # ── 虚拟麦克风 ──
 
-    def _check_vb_cable(self):
-        self._service.detect_vb_cable()
+    def _check_virtual_mic(self):
+        self._service.detect_virtual_mic()
 
     # ── 清理 ──
 

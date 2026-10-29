@@ -38,12 +38,19 @@ def check_piper_available() -> tuple:
     found_exe = any(os.path.isfile(p) for p in search_paths)
 
     if not found_exe:
-        reasons.append("缺少 piper.exe")
-        setup["download"].append((
-            "https://github.com/rhasspy/piper/releases/latest/download/piper_windows_amd64.zip",
-            "piper.exe",
-            "piper/piper.exe",
-        ))
+        reasons.append("缺少 piper.exe" if sys.platform == "win32" else "缺少 piper 可执行文件")
+        if sys.platform == "win32":
+            setup["download"].append((
+                "https://github.com/rhasspy/piper/releases/latest/download/piper_windows_amd64.zip",
+                "piper.exe",
+                "piper/piper.exe",
+            ))
+        else:
+            setup["download"].append((
+                "https://github.com/rhasspy/piper/releases/latest/download/piper_linux_x86_64.tar.gz",
+                "piper_linux_x86_64.tar.gz",
+                "piper/piper",
+            ))
 
     model_path = os.path.join(root, model_dir)
     if not os.path.isdir(model_path):

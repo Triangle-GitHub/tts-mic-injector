@@ -35,12 +35,16 @@ def check_espeak_available() -> tuple:
         if os.path.isfile(p):
             return True, "", {}
 
-    return False, "未找到 espeak-ng.exe", {
-        "pip": [], "download": [
-            ("https://github.com/espeak-ng/espeak-ng/releases/download/1.52/espeak-ng-windows-x64.zip",
-             "espeak-ng.exe",
-             None)
-        ]
+    if sys.platform == "win32":
+        return False, "未找到 espeak-ng.exe", {
+            "pip": [], "download": [
+                ("https://github.com/espeak-ng/espeak-ng/releases/download/1.52/espeak-ng-windows-x64.zip",
+                 "espeak-ng.exe",
+                 None)
+            ]
+        }
+    return False, "未找到 espeak-ng（Fedora 请执行：sudo dnf install espeak-ng）", {
+        "pip": [], "download": []
     }
 
 
@@ -78,6 +82,8 @@ class EspeakEngine(TTSEngine):
         if not self._exe_path:
             raise FileNotFoundError(
                 "未找到 espeak-ng.exe。请从 https://github.com/espeak-ng/espeak-ng/releases 下载并放入 PATH。"
+                if sys.platform == "win32" else
+                "未找到 espeak-ng。Fedora 请执行：sudo dnf install espeak-ng"
             )
         logger.info(f"eSpeak NG 路径: {self._exe_path}")
 

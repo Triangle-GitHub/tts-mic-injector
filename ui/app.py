@@ -59,15 +59,15 @@ class TTSMicInjectorApp:
 
         # 注入 UI 状态获取器到 service（避免 service 直接依赖 tkinter）
         self._service.set_monitor_state_getter(lambda: self._monitor_enabled.get())
-        self._service.set_monitor_device_getter(self._get_monitor_device_index)
+        self._service.set_monitor_device_getter(self._get_monitor_device)
         self._service.set_pitch_getter(lambda: self._pitch_var.get())
         self._service.set_volume_getter(lambda: self._vol_var.get() / 100.0)
 
         # 注册 service 回调
         self._service.on("status", self._on_service_status)
         self._service.on("engine_ready", self._on_service_engine_ready)
-        self._service.on("vb_cable_detected", self._on_vb_cable_detected)
-        self._service.on("vb_cable_error", self._on_vb_cable_error)
+        self._service.on("virtual_mic_detected", self._on_virtual_mic_detected)
+        self._service.on("virtual_mic_error", self._on_virtual_mic_error)
 
         self.root = tk.Tk()
         self.root.title(WINDOW_TITLE)
@@ -100,11 +100,11 @@ class TTSMicInjectorApp:
         # UI 侧的引擎切换后处理由 _switch_engine 完成
         pass
 
-    def _on_vb_cable_detected(self, idx):
+    def _on_virtual_mic_detected(self, device):
         self.root.after(0, lambda: self._mic_label.config(text="🎤 CABLE Input ✅", foreground="green"))
         logger.info("VB-Cable 检测通过")
 
-    def _on_vb_cable_error(self, msg):
+    def _on_virtual_mic_error(self, msg):
         self.root.after(0, self._set_mic_error)
 
     def _set_mic_error(self):
@@ -462,8 +462,8 @@ class TTSMicInjectorApp:
             self._monitor_combo.pack_forget()
 
     def _populate_monitor_combo(self):
-        devices = self._service.list_monitor_devices()
-        self._monitor_devices = {name: idx for idx, name in devices}
+        devices = self._service.list_output_devices()
+        self._monitor_devices = {d.label: d for d in devices}
         self._monitor_combo['values'] = list(self._monitor_devices.keys())
         for name in self._monitor_devices:
             if "CABLE" not in name.upper():
@@ -473,7 +473,7 @@ class TTSMicInjectorApp:
             if self._monitor_devices:
                 self._monitor_device_var.set(list(self._monitor_devices.keys())[0])
 
-    def _get_monitor_device_index(self) -> int:
+    def _get_monitor_device(self):
         if not self._monitor_enabled.get():
             return None
         name = self._monitor_device_var.get()
@@ -565,7 +565,7 @@ class TTSMicInjectorApp:
 
     # ── VB-Cable 检测 ──
     def _check_vb_cable(self):
-        if not self._service.detect_vb_cable():
+        if not self._service.detect_virtual_mic():
             self.root.after(0, self._set_mic_error)
 
     # ── 窗口关闭 ──
