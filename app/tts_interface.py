@@ -152,7 +152,7 @@ class TTSInterface(QWidget):
     # ── Service 状态获取器注入 ──
     def _init_getters(self):
         self._service.set_monitor_state_getter(lambda: self._monitor_enabled)
-        self._service.set_monitor_device_getter(self._get_monitor_device_index)
+        self._service.set_monitor_device_getter(self._get_monitor_device)
         self._service.set_pitch_getter(lambda: self._pitch_slider.value())
         self._service.set_volume_getter(lambda: self._volume_slider.value() / 100.0)
 
@@ -160,8 +160,8 @@ class TTSInterface(QWidget):
     def _register_callbacks(self):
         self._service.on("status", self._on_service_status)
         self._service.on("engine_ready", self._on_service_engine_ready)
-        self._service.on("vb_cable_detected", self._on_vb_cable_detected)
-        self._service.on("vb_cable_error", self._on_vb_cable_error)
+        self._service.on("virtual_mic_detected", self._on_virtual_mic_detected)
+        self._service.on("virtual_mic_error", self._on_virtual_mic_error)
 
     def _on_service_status(self, text, color):
         QTimer.singleShot(0, lambda: self._update_status(text, color))
@@ -169,11 +169,11 @@ class TTSInterface(QWidget):
     def _on_service_engine_ready(self, name):
         pass
 
-    def _on_vb_cable_detected(self, idx):
+    def _on_virtual_mic_detected(self, device):
         QTimer.singleShot(0, lambda: self._mic_label.setText("🎤 CABLE Input ✅"))
         QTimer.singleShot(0, lambda: self._mic_label.setStyleSheet("color: green;"))
 
-    def _on_vb_cable_error(self, msg):
+    def _on_virtual_mic_error(self, msg):
         QTimer.singleShot(0, self._set_mic_error)
 
     def _set_mic_error(self):
@@ -653,8 +653,8 @@ class TTSInterface(QWidget):
             self._monitor_combo.hide()
 
     def _populate_monitor_combo(self):
-        devices = self._service.list_monitor_devices()
-        self._monitor_devices = {name: idx for idx, name in devices}
+        devices = self._service.list_output_devices()
+        self._monitor_devices = {d.label: d for d in devices}
         self._monitor_combo.clear()
         self._monitor_combo.addItems(list(self._monitor_devices.keys()))
         for name in self._monitor_devices:
@@ -665,7 +665,7 @@ class TTSInterface(QWidget):
             if self._monitor_devices:
                 self._monitor_combo.setCurrentIndex(0)
 
-    def _get_monitor_device_index(self):
+    def _get_monitor_device(self):
         if not self._monitor_enabled:
             return None
         name = self._monitor_combo.text()
@@ -746,7 +746,7 @@ class TTSInterface(QWidget):
 
     # ── VB-Cable 检测 ──
     def _check_vb_cable(self):
-        if not self._service.detect_vb_cable():
+        if not self._service.detect_virtual_mic():
             QTimer.singleShot(0, self._set_mic_error)
 
     # ── 延时任务 ──
